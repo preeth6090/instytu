@@ -54,7 +54,9 @@ const Register = () => {
       });
       localStorage.setItem('instytu_user', JSON.stringify(data));
       localStorage.setItem('instytu_token', data.token);
-      window.location.href = '/admin';
+      // Redirect to admin but show branded login URL in a toast via query param
+      const slug = data.institution?.slug;
+      window.location.href = `/admin${slug ? `?registered=true&slug=${slug}` : ''}`;
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed');
     } finally {

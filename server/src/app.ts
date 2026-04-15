@@ -6,6 +6,8 @@ import session from 'express-session';
 import './config/passport';
 import passport from 'passport';
 import authRoutes from './routes/authRoutes';
+import institutionRoutes from './routes/institutionRoutes';
+import aiRoutes from './routes/aiRoutes';
 import studentRoutes from './routes/studentRoutes';
 import classRoutes from './routes/classRoutes';
 import attendanceRoutes from './routes/attendanceRoutes';
@@ -50,6 +52,8 @@ app.use(passport.session());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/institutions', institutionRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/attendance', attendanceRoutes);

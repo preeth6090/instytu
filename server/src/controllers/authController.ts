@@ -26,9 +26,23 @@ export const register = async (req: Request, res: Response) => {
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json({ message: 'An account with this email already exists' });
 
+    // Generate unique slug from institution name
+    const baseSlug = institutionName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .slice(0, 40);
+    let slug = baseSlug;
+    let counter = 1;
+    while (await Institution.findOne({ slug })) {
+      slug = `${baseSlug}-${counter++}`;
+    }
+
     // Create institution first
     const institution = await Institution.create({
       name: institutionName,
+      slug,
       type: institutionType,
       email: institutionEmail || email,
       phone: institutionPhone,
@@ -58,7 +72,7 @@ export const register = async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       role: user.role,
-      institution: { _id: institution._id, name: institution.name, type: institution.type },
+      institution: { _id: institution._id, name: institution.name, type: institution.type, slug: institution.slug, logo: institution.logo, primaryColor: institution.primaryColor },
       token: generateToken(user._id.toString()),
     });
   } catch (err) {
@@ -74,7 +88,7 @@ export const login = async (req: Request, res: Response) => {
     const { email, password } = req.body;
     console.log('Login attempt:', email);
 
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select('+password').populate('institution', 'name slug logo primaryColor tagline type');
     console.log('User found:', user ? 'yes' : 'no');
     console.log('User has password:', user?.password ? 'yes' : 'no');
 
