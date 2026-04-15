@@ -6,6 +6,17 @@ import session from 'express-session';
 import './config/passport';
 import passport from 'passport';
 import authRoutes from './routes/authRoutes';
+import studentRoutes from './routes/studentRoutes';
+import classRoutes from './routes/classRoutes';
+import attendanceRoutes from './routes/attendanceRoutes';
+import gradeRoutes from './routes/gradeRoutes';
+import homeworkRoutes from './routes/homeworkRoutes';
+import noticeRoutes from './routes/noticeRoutes';
+import leaveRoutes from './routes/leaveRoutes';
+import feeRoutes from './routes/feeRoutes';
+import messageRoutes from './routes/messageRoutes';
+import timetableRoutes from './routes/timetableRoutes';
+import ptmRoutes from './routes/ptmRoutes';
 
 dotenv.config();
 
@@ -39,6 +50,17 @@ app.use(passport.session());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/students', studentRoutes);
+app.use('/api/classes', classRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/grades', gradeRoutes);
+app.use('/api/homework', homeworkRoutes);
+app.use('/api/notices', noticeRoutes);
+app.use('/api/leave', leaveRoutes);
+app.use('/api/fees', feeRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/timetable', timetableRoutes);
+app.use('/api/ptm', ptmRoutes);
 
 app.get('/', (_req, res) => {
   res.json({ message: 'Instytu API running ✅' });
