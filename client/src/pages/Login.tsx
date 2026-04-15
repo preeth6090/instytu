@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '../api/axios';
 
-const API = 'http://localhost:8000/api';
+const ROLE_PATHS: Record<string, string> = {
+  admin: '/admin',
+  superadmin: '/admin',
+  teacher: '/teacher',
+  student: '/student',
+  parent: '/parent',
+};
 
 const Login = () => {
   const [portal, setPortal] = useState('admin');
@@ -12,18 +18,15 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Login clicked', email, password);
     try {
       setLoading(true);
       setError('');
-      const { data } = await axios.post(`${API}/auth/login`, { email, password });
-      console.log('Login response:', data);
+      const { data } = await api.post('/auth/login', { email, password });
       localStorage.setItem('instytu_user', JSON.stringify(data));
       localStorage.setItem('instytu_token', data.token);
-      console.log('Redirecting to:', `/${data.role}`);
-      window.location.href = `/${data.role}`;
+      const path = ROLE_PATHS[data.role] || '/admin';
+      window.location.href = path;
     } catch (err: any) {
-      console.log('Login error:', err);
       setError(err.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
