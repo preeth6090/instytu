@@ -15,6 +15,7 @@ const LeavesSection = () => {
   const [filterStatus, setFilterStatus] = useState('pending');
 
   const load = () => api.get(`/leaves${filterStatus ? `?status=${filterStatus}` : ''}`).then(r => setLeaves(r.data)).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [filterStatus]);
 
   const review = async (status: 'approved' | 'rejected') => {

@@ -64,7 +64,7 @@ const GradesSection = () => {
     return cls && term;
   });
 
-  const terms = [...new Set(grades.map(g => g.term))];
+  const terms = Array.from(new Set(grades.map((g: any) => g.term)));
   const classStudents = students.filter(s => !form.classId || s.class?._id === form.classId);
 
   return (

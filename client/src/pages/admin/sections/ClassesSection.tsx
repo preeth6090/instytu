@@ -3,8 +3,6 @@ import api from '../../../api/axios';
 import Modal from '../../../components/Modal';
 import Spinner from '../../../components/Spinner';
 
-const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-
 const blank = () => ({ name: '', grade: '', section: '', subjects: '', academicYear: '2025-26' });
 
 const ClassesSection = () => {
