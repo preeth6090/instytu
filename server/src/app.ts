@@ -97,17 +97,5 @@ export const connectDB = async () => {
     console.error('MongoDB connection error ❌:', err);
   }
 };
-# Dependencies
-node_modules/
-
-# Environment variables
-.env
-
-# Build output
-dist/
-
-# IDEs and OS files
-.DS_Store
-.vscode/
 
 export default app;
