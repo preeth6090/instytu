@@ -159,6 +159,9 @@ const ParentDashboard: React.FC = () => {
   // ── Fees ─────────────────────────────────────────────────────────────────
   const [fees, setFees] = useState<FeeItem[]>([]);
   const [payingFeeId, setPayingFeeId] = useState<number | null>(null);
+  const [newFeeTitle, setNewFeeTitle] = useState('');
+  const [newFeeAmount, setNewFeeAmount] = useState('');
+  const [newFeeDue, setNewFeeDue] = useState('');
 
   // ── Leave ─────────────────────────────────────────────────────────────────
   const [leaveApps, setLeaveApps] = useState<LeaveApp[]>([]);
@@ -796,9 +799,6 @@ const ParentDashboard: React.FC = () => {
   // ── RENDER: FEES ──────────────────────────────────────────────────────────
   const renderFees = () => {
     if (!activeChild) return <NoChildGuard />;
-    const [newFeeTitle, setNewFeeTitle] = useState('');
-    const [newFeeAmount, setNewFeeAmount] = useState('');
-    const [newFeeDue, setNewFeeDue] = useState('');
 
     return (
       <div className="space-y-4">
