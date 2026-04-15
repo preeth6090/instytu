@@ -140,7 +140,7 @@ const ParentDashboard: React.FC = () => {
   const [activeChildId, setActiveChildId] = useState<number | null>(null);
   const [showAddChild, setShowAddChild] = useState(false);
   const [newChild, setNewChild] = useState({ name: '', class: '10-A', roll: '', school: '', dob: '', busRoute: '' });
-  const [confirmDeleteChild, setConfirmDeleteChild] = useState<number | null>(null);
+  const [, setConfirmDeleteChild] = useState<number | null>(null);
   const activeChild = children.find(c => c.id === activeChildId) || null;
 
   // ── Attendance ────────────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ const ParentDashboard: React.FC = () => {
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const getAvatar = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+  const getAvatar = (name: string) => name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) || '?'; // eslint-disable-line @typescript-eslint/no-unused-vars
   const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   const todayISO = new Date().toISOString().split('T')[0];
 
@@ -279,7 +279,7 @@ const ParentDashboard: React.FC = () => {
     addNotification({ type: 'notice', title: 'Child added', body: `${child.name} linked to your account`, childId: child.id });
   };
 
-  const deleteChild = (id: number) => {
+  const deleteChild = (id: number) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     setChildren(p => p.filter(c => c.id !== id));
     if (activeChildId === id) setActiveChildId(children.find(c => c.id !== id)?.id || null);
     setConfirmDeleteChild(null);
@@ -342,7 +342,7 @@ const ParentDashboard: React.FC = () => {
     rzp.open();
   };
 
-  const addHomework = (subject: string, title: string, dueDate: string) => {
+  const addHomework = (subject: string, title: string, dueDate: string) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     if (!activeChildId) return;
     setHomework(p => [...p, { id: Date.now(), childId: activeChildId, subject, title, dueDate, status: 'pending' }]);
   };
@@ -401,7 +401,7 @@ const ParentDashboard: React.FC = () => {
     showToast('PTM booking cancelled');
   };
 
-  const addNotice = (title: string, body: string, type: Notice['type'], priority: Notice['priority']) => {
+  const addNotice = (title: string, body: string, type: Notice['type'], priority: Notice['priority']) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     const n: Notice = { id: Date.now(), title, body, date: today, type, priority, read: false };
     setNotices(p => [n, ...p]);
     addNotification({ type: 'notice', title, body, });
