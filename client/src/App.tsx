@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import AdminDashboard from './pages/admin/Dashboard';
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
 import ParentDashboard from './pages/parent/ParentDashboard';
+import StudentDashboard from './pages/student/StudentDashboard';
 
 const PrivateRoute = ({ children }: { children: ReactElement }) => {
   const user = JSON.parse(localStorage.getItem('instytu_user') || 'null');
@@ -34,6 +35,11 @@ function App() {
         <Route path="/parent" element={
           <PrivateRoute>
             <ParentDashboard />
+          </PrivateRoute>
+        } />
+        <Route path="/student" element={
+          <PrivateRoute>
+            <StudentDashboard />
           </PrivateRoute>
         } />
         <Route path="/" element={<Navigate to="/login" />} />
