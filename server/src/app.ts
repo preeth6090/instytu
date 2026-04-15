@@ -24,33 +24,48 @@ dotenv.config();
 
 const app = express();
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
+// ─── CORS CONFIGURATION ──────────────────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:3000',
+  'https://instytu.vercel.app',
 ].filter(Boolean) as string[];
 
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) cb(null, true);
-    else cb(new Error('Not allowed by CORS'));
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
   },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+};
+
+// Handle preflight requests before all other routes
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
+// ─── SESSION CONFIG ──────────────────────────────────────────────────────────
 app.use(session({
-  secret: process.env.JWT_SECRET as string,
+  secret: process.env.JWT_SECRET || 'fallback-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production' },
+  cookie: { 
+    secure: true, // Required for cross-site cookies
+    sameSite: 'none', // Required because frontend and backend are on different domains
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  },
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// ─── ROUTES ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/institutions', institutionRoutes);
 app.use('/api/ai', aiRoutes);
@@ -60,7 +75,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/grades', gradeRoutes);
 app.use('/api/homework', homeworkRoutes);
 app.use('/api/notices', noticeRoutes);
-app.use('/api/leave', leaveRoutes);
+app.use('/api/leaves', leaveRoutes);
 app.use('/api/fees', feeRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/timetable', timetableRoutes);
@@ -70,13 +85,29 @@ app.get('/', (_req, res) => {
   res.json({ message: 'Instytu API running ✅' });
 });
 
-// ─── MongoDB (cached for serverless) ─────────────────────────────────────────
+// ─── MONGODB CONNECTION ──────────────────────────────────────────────────────
 let connected = false;
 export const connectDB = async () => {
   if (connected) return;
-  await mongoose.connect(process.env.MONGODB_URI as string);
-  connected = true;
-  console.log('MongoDB connected ✅');
+  try {
+    await mongoose.connect(process.env.MONGODB_URI as string);
+    connected = true;
+    console.log('MongoDB connected ✅');
+  } catch (err) {
+    console.error('MongoDB connection error ❌:', err);
+  }
 };
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Build output
+dist/
+
+# IDEs and OS files
+.DS_Store
+.vscode/
 
 export default app;
