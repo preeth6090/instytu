@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 
 const ROLE_PATHS: Record<string, string> = {
@@ -10,6 +11,7 @@ const ROLE_PATHS: Record<string, string> = {
 };
 
 const Login = () => {
+  const navigate = useNavigate();
   const [portal, setPortal] = useState('admin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -116,7 +118,10 @@ const Login = () => {
           </form>
 
           <p className="text-center text-xs text-gray-400 mt-4">
-            Don't have an account? <span className="text-blue-500 cursor-pointer">Contact your administrator</span>
+            New institution?{' '}
+            <button onClick={() => navigate('/register')} className="text-blue-500 font-medium hover:underline">
+              Register here
+            </button>
           </p>
         </div>
       </div>

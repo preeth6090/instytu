@@ -2,40 +2,64 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import User from '../models/User';
+import Institution from '../models/Institution';
 
 const generateToken = (id: string) => {
   return jwt.sign({ id }, process.env.JWT_SECRET as string, { expiresIn: '7d' });
 };
 
-// @desc    Register user
+// @desc    Register a new institution + admin user
 // @route   POST /api/auth/register
 export const register = async (req: Request, res: Response) => {
   try {
-    const { name, email, password, role } = req.body;
-    console.log('Register attempt:', email);
-    console.log('Password received:', password);
+    const {
+      // Institution fields
+      institutionName, institutionType, institutionEmail, institutionPhone, institutionAddress,
+      // Admin user fields
+      name, email, password,
+    } = req.body;
+
+    if (!name || !email || !password || !institutionName || !institutionType) {
+      return res.status(400).json({ message: 'Please fill in all required fields' });
+    }
 
     const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: 'User already exists' });
+    if (existingUser) return res.status(400).json({ message: 'An account with this email already exists' });
 
+    // Create institution first
+    const institution = await Institution.create({
+      name: institutionName,
+      type: institutionType,
+      email: institutionEmail || email,
+      phone: institutionPhone,
+      address: institutionAddress,
+      plan: 'demo',
+      isActive: true,
+      createdBy: null,   // will be updated after user creation
+    });
+
+    // Create admin user linked to institution
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('Hashed password generated:', hashedPassword ? 'yes' : 'no');
-
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: role || 'student'
+      role: 'admin',
+      institution: institution._id,
+      isActive: true,
     });
 
-    console.log('User created, password in DB:', user.password ? 'yes' : 'no');
+    // Back-fill createdBy
+    institution.createdBy = user._id as any;
+    await institution.save();
 
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
-      token: generateToken(user._id.toString())
+      institution: { _id: institution._id, name: institution.name, type: institution.type },
+      token: generateToken(user._id.toString()),
     });
   } catch (err) {
     console.error('Register error:', err);
