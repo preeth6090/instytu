@@ -1,18 +1,5 @@
 {
   "version": 2,
   "builds": [{ "src": "api/index.ts", "use": "@vercel/node" }],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "methods": ["OPTIONS"],
-      "headers": {
-        "Access-Control-Allow-Origin": "https://instytu.vercel.app",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept",
-        "Access-Control-Allow-Credentials": "true"
-      },
-      "status": 204
-    },
-    { "src": "/(.*)", "dest": "api/index.ts" }
-  ]
+  "routes": [{ "src": "/(.*)", "dest": "api/index.ts" }]
 }
