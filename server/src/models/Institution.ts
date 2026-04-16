@@ -19,6 +19,7 @@ export interface IInstitution extends Document {
   gstPercentage?: number;
   website?: string;
   bankDetails?: string;
+  geminiApiKey?: string;
   invoiceSettings: {
     prefix: string;
     suffix: string;
@@ -58,6 +59,7 @@ const InstitutionSchema = new Schema<IInstitution>({
   gstPercentage: { type: Number, default: 18 },
   website: { type: String },
   bankDetails: { type: String },
+  geminiApiKey: { type: String },
   invoiceSettings: {
     prefix: { type: String, default: 'INV' },
     suffix: { type: String, default: '' },

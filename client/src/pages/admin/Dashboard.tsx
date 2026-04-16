@@ -22,6 +22,7 @@ const FeeBundlesSection  = lazy(() => import('./sections/FeeBundlesSection'));
 const FeeCollectionSection = lazy(() => import('./sections/FeeCollectionSection'));
 const ReportsSection     = lazy(() => import('./sections/ReportsSection'));
 const WidgetDashboard    = lazy(() => import('./sections/WidgetDashboard'));
+const BulkUploadSection  = lazy(() => import('./sections/BulkUploadSection'));
 
 const NAV = [
   // ── Core ──────────────────────────────────────────────────
@@ -48,6 +49,7 @@ const NAV = [
   { id: 'campuses',        label: 'Campuses',        icon: '🏢', roles: ['admin','superadmin'] },
   { id: 'users',           label: 'Users',           icon: '👤', roles: ['admin','superadmin'] },
   { id: 'roles',           label: 'Roles & Permissions', icon: '🔐', roles: ['admin','superadmin'] },
+  { id: 'bulk-upload',     label: 'Bulk Upload',     icon: '📤', roles: ['admin','superadmin'] },
   { id: 'settings',        label: 'School Settings', icon: '⚙️', roles: ['admin','superadmin'] },
 ];
 
@@ -57,7 +59,7 @@ const NAV_GROUPS: { label: string; ids: string[] }[] = [
   { label: 'Academics', ids: ['classes', 'students', 'teachers', 'attendance', 'grades', 'homework', 'timetable', 'ptm'] },
   { label: 'Communication', ids: ['notices', 'leaves'] },
   { label: 'Finance', ids: ['fee-collection', 'fee-bundles', 'fees', 'reports'] },
-  { label: 'Administration', ids: ['campuses', 'users', 'roles', 'settings'] },
+  { label: 'Administration', ids: ['campuses', 'users', 'roles', 'bulk-upload', 'settings'] },
 ];
 
 const Dashboard = () => {
@@ -91,6 +93,7 @@ const Dashboard = () => {
       case 'fee-bundles':    return <FeeBundlesSection role={role} />;
       case 'fee-collection': return <FeeCollectionSection role={role} />;
       case 'reports':        return <ReportsSection role={role} />;
+      case 'bulk-upload':    return <BulkUploadSection role={role} />;
       default:               return <Overview role={role} />;
     }
   };

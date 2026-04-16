@@ -1,11 +1,17 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
+import Institution from '../models/Institution';
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
-async function gemini(prompt: string): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('GEMINI_API_KEY not set');
+async function gemini(prompt: string, institutionId?: any): Promise<string> {
+  // Prefer institution's own key, fall back to server env key
+  let key = process.env.GEMINI_API_KEY;
+  if (institutionId) {
+    const inst = await Institution.findById(institutionId).select('geminiApiKey').lean();
+    if (inst?.geminiApiKey) key = inst.geminiApiKey;
+  }
+  if (!key || key === 'your_key_here') throw new Error('No Gemini API key configured. Add one in School Settings.');
 
   const res = await fetch(`${GEMINI_URL}?key=${key}`, {
     method: 'POST',
@@ -37,7 +43,7 @@ Attendance: ${attendance}%.
 ${behavior ? `Behavior note: ${behavior}` : ''}
 Keep it encouraging, specific, and actionable. Do not use generic phrases. Write in third person.`;
 
-    const comment = await gemini(prompt);
+    const comment = await gemini(prompt, req.user!.institution);
     res.json({ comment: comment.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -58,7 +64,7 @@ ${additionalContext ? `Additional context: ${additionalContext}` : ''}
 Format: Start with "NOTICE" as a heading, then the body (2-3 short paragraphs), ending with "By order of the Principal."
 Keep it formal, clear, and concise. Return only the notice text.`;
 
-    const notice = await gemini(prompt);
+    const notice = await gemini(prompt, req.user!.institution);
     res.json({ notice: notice.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -80,7 +86,7 @@ ${objectives ? `Learning objectives: ${objectives}` : ''}
 Include: Learning Objectives, Materials Needed, Introduction (5 min), Main Activity (25 min), Practice/Assessment (10 min), Conclusion (5 min), Homework.
 Keep it practical and classroom-ready.`;
 
-    const plan = await gemini(prompt);
+    const plan = await gemini(prompt, req.user!.institution);
     res.json({ plan: plan.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -98,7 +104,7 @@ The student asks: "${question}"
 
 Explain clearly and simply. Use examples if helpful. Break it into steps if it's a problem. Keep your answer under 200 words. Do not do the homework for them — help them understand how to solve it.`;
 
-    const answer = await gemini(prompt);
+    const answer = await gemini(prompt, req.user!.institution);
     res.json({ answer: answer.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -117,7 +123,7 @@ Duration: ${days} day(s)
 ${context ? `Context: ${context}` : ''}
 Keep it professional and brief. Return only the reason text, no greeting or signature.`;
 
-    const reason = await gemini(prompt);
+    const reason = await gemini(prompt, req.user!.institution);
     res.json({ reason: reason.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -148,7 +154,7 @@ Provide:
 
 Keep it concise and practical. Total response under 300 words.`;
 
-    const insight = await gemini(prompt);
+    const insight = await gemini(prompt, req.user!.institution);
     res.json({ insight: insight.trim(), atRiskCount: atRisk.length });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -171,7 +177,7 @@ ${overdueDays ? `Overdue by: ${overdueDays} days` : ''}
 
 Keep it 3-4 sentences. Professional, friendly tone. Include the amount and due date. Return only the message body, no subject line.`;
 
-    const message = await gemini(prompt);
+    const message = await gemini(prompt, req.user!.institution);
     res.json({ message: message.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -197,7 +203,7 @@ Leaves taken: ${leaveCount || 0}
 
 Write 3-4 talking points the teacher can use in the meeting. Include positives and areas for improvement. Keep it factual and constructive.`;
 
-    const summary = await gemini(prompt);
+    const summary = await gemini(prompt, req.user!.institution);
     res.json({ summary: summary.trim() });
   } catch (err: any) {
     res.status(500).json({ message: err.message || 'AI service error' });
@@ -237,7 +243,7 @@ User request: "${userPrompt}"
 
 Respond with ONLY valid JSON. No explanation.`;
 
-    const raw = await gemini(systemPrompt);
+    const raw = await gemini(systemPrompt, req.user!.institution);
     // Strip markdown code fences if any
     const cleaned = raw.replace(/```json?/gi, '').replace(/```/g, '').trim();
     const widget = JSON.parse(cleaned);

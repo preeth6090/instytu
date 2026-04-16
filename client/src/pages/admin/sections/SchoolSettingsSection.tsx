@@ -127,6 +127,22 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
               <label className="text-xs font-semibold text-gray-600 block mb-1">Bank Details (for invoice)</label>
               <textarea value={inst.bankDetails || ''} onChange={e => set('bankDetails', e.target.value)} rows={2} placeholder="Account No, IFSC, Bank Name, Branch" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400 resize-none" />
             </div>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Gemini AI API Key</label>
+              <input
+                type="password"
+                value={inst.geminiApiKey || ''}
+                onChange={e => set('geminiApiKey', e.target.value)}
+                placeholder="AIza..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400 font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Used for AI features (report comments, notice drafting, etc.).{' '}
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">
+                  Get a free key from Google AI Studio →
+                </a>
+              </p>
+            </div>
           </div>
 
           <div className="border-t border-gray-100 pt-5">

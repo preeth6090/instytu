@@ -30,7 +30,7 @@ export const updateMyInstitution = async (req: AuthRequest, res: Response) => {
   try {
     const allowed = [
       'name', 'tagline', 'logo', 'primaryColor', 'phone', 'address', 'email',
-      'website', 'gstn', 'gstPercentage', 'bankDetails', 'invoiceSettings',
+      'website', 'gstn', 'gstPercentage', 'bankDetails', 'invoiceSettings', 'geminiApiKey',
     ];
     const updates: any = {};
     allowed.forEach(key => { if (req.body[key] !== undefined) updates[key] = req.body[key]; });
