@@ -8,7 +8,8 @@ const TYPES = ['general','exam','event','holiday','urgent'];
 const typeVariant: any = { general: 'blue', exam: 'purple', event: 'green', holiday: 'yellow', urgent: 'red' };
 const blank = () => ({ title: '', content: '', type: 'general', targetRoles: ['student','parent','teacher'], expiresAt: '' });
 
-const NoticesSection = () => {
+const NoticesSection = ({ role }: { role: string }) => {
+  const canEdit = role === 'admin' || role === 'superadmin';
   const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
@@ -26,7 +27,6 @@ const NoticesSection = () => {
     setForm({ title: n.title, content: n.content, type: n.type, targetRoles: n.targetRoles || [], expiresAt: n.expiresAt ? n.expiresAt.slice(0, 10) : '' });
     setEditing(n._id); setError(''); setModal('edit');
   };
-
   const save = async () => {
     if (!form.title || !form.content) return setError('Title and content are required');
     setSaving(true); setError('');
@@ -37,34 +37,19 @@ const NoticesSection = () => {
     } catch (e: any) { setError(e.response?.data?.message || 'Failed to save'); }
     finally { setSaving(false); }
   };
-
-  const remove = async (id: string) => {
-    if (!window.confirm('Delete this notice?')) return;
-    await api.delete(`/notices/${id}`); load();
-  };
-
-  const toggleRole = (role: string) => {
-    setForm((p: any) => ({
-      ...p,
-      targetRoles: p.targetRoles.includes(role)
-        ? p.targetRoles.filter((r: string) => r !== role)
-        : [...p.targetRoles, role],
-    }));
-  };
+  const remove = async (id: string) => { if (!window.confirm('Delete this notice?')) return; await api.delete(`/notices/${id}`); load(); };
+  const toggleRole = (r: string) => setForm((p: any) => ({ ...p, targetRoles: p.targetRoles.includes(r) ? p.targetRoles.filter((x: string) => x !== r) : [...p.targetRoles, r] }));
 
   const filtered = !filterType ? notices : notices.filter(n => n.type === filterType);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-3 items-center">
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
+        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
           <option value="">All Types</option>
           {TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
         </select>
-        <button onClick={openAdd} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 ml-auto">
-          + Post Notice
-        </button>
+        {canEdit && <button onClick={openAdd} className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 ml-auto">+ Post Notice</button>}
       </div>
 
       {loading ? <div className="flex justify-center py-20"><Spinner size="lg" /></div> : (
@@ -80,16 +65,14 @@ const NoticesSection = () => {
                   </div>
                   <h3 className="font-bold text-gray-900">{n.title}</h3>
                   <p className="text-sm text-gray-600 mt-1 line-clamp-2">{n.content}</p>
-                  <div className="flex gap-1.5 mt-2">
-                    {(n.targetRoles || []).map((r: string) => (
-                      <span key={r} className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{r}</span>
-                    ))}
+                  <div className="flex gap-1.5 mt-2">{(n.targetRoles || []).map((r: string) => <span key={r} className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">{r}</span>)}</div>
+                </div>
+                {canEdit && (
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => openEdit(n)} className="text-indigo-600 hover:underline text-xs font-medium">Edit</button>
+                    <button onClick={() => remove(n._id)} className="text-red-500 hover:underline text-xs font-medium">Delete</button>
                   </div>
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={() => openEdit(n)} className="text-indigo-600 hover:underline text-xs font-medium">Edit</button>
-                  <button onClick={() => remove(n._id)} className="text-red-500 hover:underline text-xs font-medium">Delete</button>
-                </div>
+                )}
               </div>
             </div>
           ))}
@@ -100,46 +83,24 @@ const NoticesSection = () => {
         <Modal title={modal === 'add' ? 'Post Notice' : 'Edit Notice'} onClose={() => setModal(null)} size="lg">
           <div className="space-y-4">
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Title *</label>
-              <input value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="Notice title"
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
-            </div>
+            <div><label className="text-xs font-semibold text-gray-600 block mb-1">Title *</label><input value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="Notice title" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-600 block mb-1">Type</label>
-                <select value={form.type} onChange={e => setForm({...form, type: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
-                  {TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              <div><label className="text-xs font-semibold text-gray-600 block mb-1">Type</label>
+                <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
+                  {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600 block mb-1">Expires At</label>
-                <input type="date" value={form.expiresAt} onChange={e => setForm({...form, expiresAt: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
-              </div>
+              <div><label className="text-xs font-semibold text-gray-600 block mb-1">Expires At</label><input type="date" value={form.expiresAt} onChange={e => setForm({...form, expiresAt: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" /></div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-2">Target Audience</label>
-              <div className="flex gap-2">
-                {['student','teacher','parent','admin'].map(role => (
-                  <button key={role} type="button" onClick={() => toggleRole(role)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${form.targetRoles.includes(role) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                    {role}
-                  </button>
-                ))}
-              </div>
+            <div><label className="text-xs font-semibold text-gray-600 block mb-2">Target Audience</label>
+              <div className="flex gap-2">{['student','teacher','parent','admin'].map(r => (
+                <button key={r} type="button" onClick={() => toggleRole(r)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${form.targetRoles.includes(r) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{r}</button>
+              ))}</div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Content *</label>
-              <textarea value={form.content} onChange={e => setForm({...form, content: e.target.value})} rows={5} placeholder="Notice content..."
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400 resize-none" />
-            </div>
+            <div><label className="text-xs font-semibold text-gray-600 block mb-1">Content *</label><textarea value={form.content} onChange={e => setForm({...form, content: e.target.value})} rows={5} placeholder="Notice content..." className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400 resize-none" /></div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setModal(null)} className="px-4 py-2 text-sm text-gray-600">Cancel</button>
-              <button onClick={save} disabled={saving} className="px-5 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-60">
-                {saving ? 'Saving...' : 'Post'}
-              </button>
+              <button onClick={save} disabled={saving} className="px-5 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-60">{saving ? 'Saving...' : 'Post'}</button>
             </div>
           </div>
         </Modal>
@@ -147,5 +108,4 @@ const NoticesSection = () => {
     </div>
   );
 };
-
 export default NoticesSection;

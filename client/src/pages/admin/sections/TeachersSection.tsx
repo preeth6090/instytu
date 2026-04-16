@@ -6,7 +6,7 @@ import Badge from '../../../components/Badge';
 
 const blank = () => ({ name: '', email: '', password: '', phone: '', subjects: '', address: '' });
 
-const TeachersSection = () => {
+const TeachersSection = ({ role }: { role: string }) => {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);

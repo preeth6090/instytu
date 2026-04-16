@@ -5,7 +5,7 @@ import Spinner from '../../../components/Spinner';
 
 const blank = () => ({ name: '', grade: '', section: '', subjects: '', academicYear: '2025-26' });
 
-const ClassesSection = () => {
+const ClassesSection = ({ role }: { role: string }) => {
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);

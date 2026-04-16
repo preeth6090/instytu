@@ -10,7 +10,7 @@ const blank = () => ({
   bloodGroup: '', busRoute: '',
 });
 
-const StudentsSection = () => {
+const StudentsSection = ({ role }: { role: string }) => {
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
