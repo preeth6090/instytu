@@ -3,23 +3,31 @@ import { AuthRequest } from '../middleware/auth';
 import Grade from '../models/Grade';
 import Student from '../models/Student';
 
-// GET /api/grades?studentId=&term=&academicYear=
+// GET /api/grades?classId=&studentId=&term=&academicYear=
+// classId is required for admin/teacher — avoids dumping all grades at once
 export const getGrades = async (req: AuthRequest, res: Response) => {
   try {
-    const { studentId, term, academicYear } = req.query;
+    const { studentId, classId, term, academicYear } = req.query;
     const filter: any = { institution: req.user!.institution };
 
     if (studentId) filter.student = studentId;
-    if (term) filter.term = term;
+    if (classId)   filter.class   = classId;
+    if (term)      filter.term    = term;
     if (academicYear) filter.academicYear = academicYear;
+
+    // Require at least one scoping filter so we never dump the whole collection
+    if (!studentId && !classId) {
+      return res.status(400).json({ message: 'Provide classId or studentId filter' });
+    }
 
     const grades = await Grade.find(filter)
       .populate({ path: 'student', populate: { path: 'user', select: 'name' } })
       .populate('class', 'name')
-      .populate('recordedBy', 'name')
+      .select('-recordedBy -__v')   // drop heavy / unused fields
       .sort({ subject: 1 })
       .lean();
 
+    res.set('Cache-Control', 'private, max-age=30');
     res.json(grades);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
@@ -29,7 +37,7 @@ export const getGrades = async (req: AuthRequest, res: Response) => {
 // GET /api/grades/my — student's own grades
 export const getMyGrades = async (req: AuthRequest, res: Response) => {
   try {
-    const student = await Student.findOne({ user: req.user!._id });
+    const student = await Student.findOne({ user: req.user!._id }).select('_id').lean();
     if (!student) return res.status(404).json({ message: 'Student profile not found' });
 
     const { term, academicYear } = req.query;
@@ -37,7 +45,8 @@ export const getMyGrades = async (req: AuthRequest, res: Response) => {
     if (term) filter.term = term;
     if (academicYear) filter.academicYear = academicYear;
 
-    const grades = await Grade.find(filter).sort({ subject: 1 });
+    const grades = await Grade.find(filter).sort({ subject: 1 }).lean();
+    res.set('Cache-Control', 'private, max-age=30');
     res.json(grades);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
@@ -100,7 +109,7 @@ export const deleteGrade = async (req: AuthRequest, res: Response) => {
 // POST /api/grades/bulk — upsert multiple grades at once
 export const bulkUpsertGrades = async (req: AuthRequest, res: Response) => {
   try {
-    const { grades } = req.body; // [{ studentId, classId, subject, term, marks, maxMarks }]
+    const { grades } = req.body;
 
     const ops = grades.map((g: any) => ({
       updateOne: {

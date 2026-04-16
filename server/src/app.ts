@@ -100,12 +100,17 @@ app.get('/', (_req, res) => {
 });
 
 // ─── MONGODB CONNECTION ──────────────────────────────────────────────────────
-let connected = false;
+// Use readyState instead of a local flag so warm Vercel invocations reuse
+// the existing connection without calling connect() again.
 export const connectDB = async () => {
-  if (connected) return;
+  if (mongoose.connection.readyState >= 1) return; // 1=connected, 2=connecting
   try {
-    await mongoose.connect(process.env.MONGODB_URI as string);
-    connected = true;
+    await mongoose.connect(process.env.MONGODB_URI as string, {
+      bufferCommands: false,   // fail fast instead of buffering on cold start
+      maxPoolSize: 5,          // keep pool small for serverless
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 30000,
+    });
     console.log('MongoDB connected ✅');
   } catch (err) {
     console.error('MongoDB connection error ❌:', err);

@@ -220,18 +220,36 @@ const AdminGrades = () => {
   const [saving2, setSaving2] = useState(false);
   const [err2, setErr2] = useState('');
 
-  const load = async () => {
+  // Load static data (classes, students, institution) once on mount
+  const loadMeta = async () => {
     setLoading(true);
     try {
-      const [g, s, c] = await Promise.all([api.get('/grades'), api.get('/students'), api.get('/classes')]);
-      setGrades(Array.isArray(g.data) ? g.data : []);
+      const [s, c, i] = await Promise.all([
+        api.get('/students'),
+        api.get('/classes'),
+        api.get('/institutions/me').catch(() => ({ data: null })),
+      ]);
       setStudents(Array.isArray(s.data) ? s.data : []);
       setClasses(Array.isArray(c.data) ? c.data : []);
-      const i = await api.get('/institutions/me').catch(() => ({ data: null }));
       setInstitution(i.data);
     } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []);
+
+  // Load grades only when class filter is set
+  const loadGrades = async (classId: string) => {
+    if (!classId) { setGrades([]); return; }
+    try {
+      const params: any = { classId };
+      if (academicYear) params.academicYear = academicYear;
+      const g = await api.get('/grades', { params });
+      setGrades(Array.isArray(g.data) ? g.data : []);
+    } catch { setGrades([]); }
+  };
+
+  useEffect(() => { loadMeta(); }, []);
+  useEffect(() => { loadGrades(filterClass); }, [filterClass, academicYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = () => loadGrades(filterClass); // for post-save refresh
 
   /* ── Gradebook helpers ── */
   const classStudents = students.filter(s => !filterClass || s.class?._id === filterClass);

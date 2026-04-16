@@ -17,8 +17,12 @@ export const getNotices = async (req: AuthRequest, res: Response) => {
 
     const notices = await Notice.find(filter)
       .populate('postedBy', 'name role')
-      .sort({ createdAt: -1 });
+      .select('-__v')
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
 
+    res.set('Cache-Control', 'private, max-age=30');
     res.json(notices);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });

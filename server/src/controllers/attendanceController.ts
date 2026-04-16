@@ -4,25 +4,36 @@ import Attendance from '../models/Attendance';
 import Student from '../models/Student';
 
 // GET /api/attendance?studentId=&month=&year=&classId=
+// classId OR studentId + month + year is required — prevents full-collection dumps
 export const getAttendance = async (req: AuthRequest, res: Response) => {
   try {
     const { studentId, classId, month, year } = req.query;
     const filter: any = { institution: req.user!.institution };
 
     if (studentId) filter.student = studentId;
-    if (classId) filter.class = classId;
+    if (classId)   filter.class   = classId;
 
     if (month && year) {
       const from = new Date(Number(year), Number(month) - 1, 1);
-      const to = new Date(Number(year), Number(month), 0, 23, 59, 59);
+      const to   = new Date(Number(year), Number(month), 0, 23, 59, 59);
       filter.date = { $gte: from, $lte: to };
+    } else if (!studentId && !classId) {
+      // No scoping at all — default to current month to avoid huge dump
+      const now = new Date();
+      filter.date = {
+        $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+        $lte: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
+      };
     }
 
     const records = await Attendance.find(filter)
       .populate('student', 'rollNumber')
       .populate('markedBy', 'name')
-      .sort({ date: -1 });
+      .select('-__v')
+      .sort({ date: -1 })
+      .lean();
 
+    res.set('Cache-Control', 'private, max-age=30');
     res.json(records);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });

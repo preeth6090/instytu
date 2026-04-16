@@ -7,7 +7,10 @@ export const getClasses = async (req: AuthRequest, res: Response) => {
   try {
     const classes = await Class.find({ institution: req.user!.institution })
       .populate('classTeacher', 'name email')
-      .sort({ grade: 1, section: 1 });
+      .select('-__v')
+      .sort({ grade: 1, section: 1 })
+      .lean();
+    res.set('Cache-Control', 'private, max-age=60');
     res.json(classes);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err });
