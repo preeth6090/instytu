@@ -106,8 +106,7 @@ export const connectDB = async () => {
   if (mongoose.connection.readyState >= 1) return; // 1=connected, 2=connecting
   try {
     await mongoose.connect(process.env.MONGODB_URI as string, {
-      bufferCommands: false,   // fail fast instead of buffering on cold start
-      maxPoolSize: 5,          // keep pool small for serverless
+      maxPoolSize: 5,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 30000,
     });
