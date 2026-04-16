@@ -29,6 +29,9 @@ const printReportCard = (student: any, gradesForStudent: any[], classObj: any, a
   const terms = Array.from(new Set(gradesForStudent.map((g: any) => g.term))) as string[];
   terms.sort((a, b) => TERMS.indexOf(a) - TERMS.indexOf(b));
 
+  const thS = 'border:1px solid #93c5fd;padding:6px 8px;text-align:center;background:#dbeafe;font-size:12px;';
+  const tdS = 'border:1px solid #e5e7eb;padding:6px 8px;font-size:12px;';
+
   // Build lookup: subject → term → grade record
   const lookup: Record<string, Record<string, any>> = {};
   for (const g of gradesForStudent) {
@@ -74,9 +77,6 @@ const printReportCard = (student: any, gradesForStudent: any[], classObj: any, a
   const gradingGradeRows = GRADING_SCALE.map(gs =>
     `<td style="border:1px solid #bfdbfe;padding:4px 8px;text-align:center;font-weight:700;background:${gs.grade==='A+'?'#22c55e':gs.grade==='A'?'#4ade80':gs.grade==='B+'?'#60a5fa':gs.grade==='B'?'#93c5fd':gs.grade==='C'?'#fde68a':'#f87171'};color:${['A+','A','F'].includes(gs.grade)?'#111':'#374151'}">${gs.grade}</td>`
   ).join('');
-
-  const thS = 'border:1px solid #93c5fd;padding:6px 8px;text-align:center;background:#dbeafe;font-size:12px;';
-  const tdS = 'border:1px solid #e5e7eb;padding:6px 8px;font-size:12px;';
 
   const html = `<!DOCTYPE html><html><head><title>Report Card — ${studentName}</title>
 <style>
