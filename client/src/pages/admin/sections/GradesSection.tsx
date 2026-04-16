@@ -197,11 +197,22 @@ const printReportCard = (student: any, gradesForStudent: any[], classObj: any, a
     <div class="sig-line">Principal's Signature</div>
   </div>
 </div>
-<script>window.onload = function() { window.print(); }</script>
 </body></html>`;
 
-  const w = window.open('', '_blank');
-  if (w) { w.document.write(html); w.document.close(); }
+  // Blob URL is more reliable than document.write + popup
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank');
+  if (w) {
+    w.addEventListener('load', () => { w.print(); URL.revokeObjectURL(url); });
+  } else {
+    // Fallback if popup blocked: download as file
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report-card-${(student?.user?.name || 'student').replace(/\s+/g, '-')}.html`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 };
 
 /* ── Admin gradebook ───────────────────────────────────────────────────────── */
@@ -221,6 +232,7 @@ const AdminGrades = () => {
   const [editingMax, setEditingMax] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   // Individual record modal
   const [modal, setModal] = useState(false);
@@ -458,11 +470,15 @@ const AdminGrades = () => {
                         <td className="px-3 py-2 text-center">
                           <button
                             onClick={() => {
+                              setPrintingId(stu._id);
                               const allGrades = grades.filter(g => (g.student?._id || g.student) === stu._id);
                               printReportCard(stu, allGrades, classObj, academicYear, institution);
+                              setTimeout(() => setPrintingId(null), 1500);
                             }}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap font-medium">
-                            Report Card
+                            disabled={printingId === stu._id}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap font-medium disabled:opacity-60 flex items-center gap-1 mx-auto">
+                            {printingId === stu._id && <Spinner size="sm" />}
+                            {printingId === stu._id ? 'Opening...' : 'Report Card'}
                           </button>
                         </td>
                       </tr>
