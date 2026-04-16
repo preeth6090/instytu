@@ -34,4 +34,7 @@ const StudentSchema = new Schema<IStudent>({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+StudentSchema.index({ institution: 1, isActive: 1 });
+StudentSchema.index({ institution: 1, class: 1 });
+
 export default mongoose.model<IStudent>('Student', StudentSchema);

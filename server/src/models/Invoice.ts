@@ -39,9 +39,24 @@ export interface IInvoice extends Document {
     gstn?: string;
     gstPercentage?: number;
     logo?: string;
+    bankDetails?: string;
     headerText?: string;
     footerText?: string;
     terms?: string;
+    showGST?: boolean;
+    showAddress?: boolean;
+    showPhone?: boolean;
+    showBankDetails?: boolean;
+  };
+  // Frozen snapshot of student at time of generation
+  studentSnapshot: {
+    name: string;
+    studentId?: string;
+    rollNumber?: string;
+    className?: string;
+    parentName?: string;
+    parentPhone?: string;
+    tags?: string;
   };
   generatedBy: mongoose.Types.ObjectId;
   isVoid: boolean;
@@ -73,8 +88,13 @@ const InvoiceSchema = new Schema<IInvoice>({
   isConcessionOnly: { type: Boolean, default: false },
   schoolSnapshot: {
     name: String, address: String, phone: String, email: String,
-    gstn: String, gstPercentage: Number, logo: String,
+    gstn: String, gstPercentage: Number, logo: String, bankDetails: String,
     headerText: String, footerText: String, terms: String,
+    showGST: Boolean, showAddress: Boolean, showPhone: Boolean, showBankDetails: Boolean,
+  },
+  studentSnapshot: {
+    name: String, studentId: String, rollNumber: String,
+    className: String, parentName: String, parentPhone: String, tags: String,
   },
   generatedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   isVoid: { type: Boolean, default: false },

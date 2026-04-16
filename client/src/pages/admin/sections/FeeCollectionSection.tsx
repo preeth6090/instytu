@@ -41,6 +41,19 @@ interface Fee {
   bundle?: { _id: string; name: string };
   academicYear: string;
   notes?: string;
+  // GST info (from bundle component if applicable)
+  taxable?: boolean;
+  taxType?: string;
+  taxRate?: number;
+}
+
+interface LineItem {
+  description: string;
+  amount: number;
+  taxable?: boolean;
+  taxType?: string;
+  taxRate?: number;
+  taxAmount?: number;
 }
 
 interface Invoice {
@@ -48,12 +61,19 @@ interface Invoice {
   invoiceNumber?: string;
   createdAt: string;
   paymentDate: string;
+  subtotal: number;
+  totalTax: number;
   total: number;
   paymentMode: string;
-  lineItems: { description: string; amount: number }[];
+  chequeNo?: string;
+  ddNo?: string;
+  transactionRef?: string;
+  lineItems: LineItem[];
+  discounts?: { description: string; amount: number }[];
   isVoid: boolean;
   isConcessionOnly: boolean;
   schoolSnapshot: any;
+  studentSnapshot?: any;
   student: any;
 }
 
@@ -165,14 +185,22 @@ const FeeCollectionSection = ({ role }: { role: string }) => {
     try {
       const r = await api.post('/invoices/collect', {
         studentId: student._id,
-        feePayments: payingItems.map(x => ({
-          feeId: x.fee._id,
-          feeName: x.fee.title,
-          feeAmount: x.fee.amount,
-          payAmount: x.amount,
-          mode: x.mode,
-          bundleName: x.fee.bundle?.name,
-        })),
+        feePayments: payingItems.map(x => {
+          const taxAmt = x.fee.taxable && x.fee.taxRate
+            ? Math.round(x.amount * (x.fee.taxRate / 100) * 100) / 100 : 0;
+          return {
+            feeId: x.fee._id,
+            feeName: x.fee.title,
+            feeAmount: x.fee.amount,
+            payAmount: x.amount,
+            mode: x.mode,
+            bundleName: x.fee.bundle?.name,
+            taxable: x.fee.taxable || false,
+            taxType: x.fee.taxType || 'none',
+            taxRate: x.fee.taxRate || 0,
+            taxAmount: taxAmt,
+          };
+        }),
         paymentDate,
         transactionRef: transactionRef || undefined,
         notes: payNotes || undefined,
@@ -639,113 +667,261 @@ const FeeCollectionSection = ({ role }: { role: string }) => {
 /* ──────────────────────────────────────────────── */
 /* Invoice Print Modal                             */
 /* ──────────────────────────────────────────────── */
+const modeLabel = (mode: string) => mode.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const fmtINR = (n: number) => `₹${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const InvoicePrintModal = ({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) => {
   const ss = invoice.schoolSnapshot || {} as any;
+  const stu = invoice.studentSnapshot || {} as any;
+  const showGST = !!ss.showGST;
+  const showBankDetails = !!ss.showBankDetails;
+  const dateStr = new Date(invoice.paymentDate || invoice.createdAt)
+    .toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  // Per-line GST split helper
+  const gstSplit = (li: any) => {
+    const taxAmt = li.taxAmount || 0;
+    if (!taxAmt) return { cgst: 0, sgst: 0, igst: 0 };
+    const taxType = (li.taxType || 'cgst_sgst').toLowerCase();
+    if (taxType === 'igst') return { cgst: 0, sgst: 0, igst: taxAmt };
+    return { cgst: taxAmt / 2, sgst: taxAmt / 2, igst: 0 };
+  };
+
+  const totalTax = invoice.totalTax || 0;
+  const subtotal = invoice.subtotal || (invoice.total - totalTax);
+
+  const buildHTML = () => {
+    const lineRows = (invoice.lineItems || []).map((li: any, i: number) => {
+      const base = showGST ? (li.amount - (li.taxAmount || 0)) : li.amount;
+      const split = gstSplit(li);
+      const taxType = (li.taxType || 'cgst_sgst').toLowerCase();
+      const gstCell = showGST ? `
+        <td style="text-align:right;padding:7px 8px">${li.taxRate ? li.taxRate + '%' : '—'}</td>
+        <td style="text-align:center;padding:7px 8px;font-size:11px">
+          ${li.taxAmount ? (taxType === 'igst'
+            ? `IGST: ₹${split.igst.toFixed(2)}`
+            : `CGST: ₹${split.cgst.toFixed(2)}<br>SGST: ₹${split.sgst.toFixed(2)}`) : '—'}
+        </td>` : '';
+      const modeCell = `<td style="padding:7px 8px">
+        <span>${modeLabel(invoice.paymentMode)}</span>
+        ${invoice.chequeNo ? `<br><span style="color:#6b7280;font-size:10px">Cheque: ${invoice.chequeNo}</span>` : ''}
+        ${invoice.ddNo ? `<br><span style="color:#6b7280;font-size:10px">DD: ${invoice.ddNo}</span>` : ''}
+        ${invoice.transactionRef && !invoice.chequeNo && !invoice.ddNo ? `<br><span style="color:#6b7280;font-size:10px">Ref: ${invoice.transactionRef}</span>` : ''}
+      </td>`;
+      return `<tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:7px 8px;text-align:center">${i + 1}</td>
+        <td style="padding:7px 8px">${li.description || ''}</td>
+        ${modeCell}
+        <td style="text-align:right;padding:7px 8px">${showGST ? fmtINR(base) : fmtINR(li.amount)}</td>
+        ${gstCell}
+        <td style="text-align:right;padding:7px 8px;font-weight:600">${fmtINR(li.amount)}</td>
+      </tr>`;
+    }).join('');
+
+    const gstHeaders = showGST ? `<th style="${thStyle}text-align:right">GST %</th><th style="${thStyle}text-align:center">GST Breakup</th>` : '';
+    const amtHeader = showGST ? 'Base Amt' : 'Amount';
+
+    return `<!DOCTYPE html><html><head><title>Fee Receipt ${invoice.invoiceNumber || ''}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; color: #1f2937; font-size: 12px; padding: 28px 32px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .school-name { font-size: 20px; font-weight: 800; color: #111827; }
+  .school-meta { font-size: 11px; color: #6b7280; margin-top: 2px; line-height: 1.5; }
+  .divider { border: none; border-top: 2px solid #1f2937; margin: 10px 0 6px; }
+  .divider2 { border: none; border-top: 1px solid #e5e7eb; margin: 8px 0; }
+  .title-row { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 8px 0; }
+  .stu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; padding: 10px 0; font-size: 12px; }
+  .stu-grid .lbl { color: #6b7280; font-size: 10px; text-transform: uppercase; }
+  .stu-grid .val { font-weight: 600; color: #111827; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th { background: #f9fafb; padding: 8px; font-size: 11px; color: #6b7280; border-top: 2px solid #1f2937; border-bottom: 1px solid #d1d5db; text-align: left; font-weight: 700; }
+  td { padding: 7px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  .total-row td { font-weight: 700; background: #f9fafb; border-top: 2px solid #1f2937; border-bottom: 2px solid #1f2937; font-size: 13px; }
+  .footer-note { text-align: center; font-size: 10px; color: #9ca3af; margin-top: 28px; border-top: 1px dashed #d1d5db; padding-top: 10px; }
+  .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-35deg); font-size: 80px; color: rgba(0,0,0,0.04); font-weight: 900; z-index: -1; white-space: nowrap; }
+  @media print { body { padding: 0 16px; } .no-print { display: none !important; } }
+</style></head><body>
+${invoice.isVoid ? '<div class="watermark">VOID</div>' : ''}
+<div class="header">
+  ${ss.logo ? `<img src="${ss.logo}" style="max-height:60px;max-width:140px;object-fit:contain">` : '<div></div>'}
+  <div style="text-align:right">
+    <div class="school-name">${ss.name || ''}</div>
+    ${ss.showAddress && ss.address ? `<div class="school-meta">${ss.address}</div>` : ''}
+    ${ss.showPhone && ss.phone ? `<div class="school-meta">Ph: ${ss.phone}</div>` : ''}
+    ${ss.email ? `<div class="school-meta">${ss.email}</div>` : ''}
+    ${ss.gstn ? `<div class="school-meta" style="color:#374151;font-weight:600">GSTIN: ${ss.gstn}</div>` : ''}
+    ${showBankDetails && ss.bankDetails ? `<div class="school-meta" style="margin-top:4px">${ss.bankDetails}</div>` : ''}
+  </div>
+</div>
+<hr class="divider">
+<div class="title-row">Fee Receipt</div>
+<hr class="divider2">
+
+<div class="stu-grid">
+  <div><div class="lbl">Student ID</div><div class="val">${stu.studentId || stu.rollNumber || invoice.student?.admissionNo || invoice.student?.rollNumber || '—'}</div></div>
+  <div><div class="lbl">Date</div><div class="val">${dateStr}</div></div>
+  <div><div class="lbl">Student Name</div><div class="val">${stu.name || invoice.student?.user?.name || '—'}</div></div>
+  <div><div class="lbl">Receipt No.</div><div class="val">${invoice.invoiceNumber || 'N/A (Concession)'}</div></div>
+  ${stu.parentName ? `<div><div class="lbl">Father's Name</div><div class="val">${stu.parentName}</div></div>` : '<div></div>'}
+  ${stu.parentPhone ? `<div><div class="lbl">Father's Phone</div><div class="val">${stu.parentPhone}</div></div>` : '<div></div>'}
+  ${stu.className ? `<div><div class="lbl">Classroom</div><div class="val">${stu.className}</div></div>` : '<div></div>'}
+  ${stu.tags ? `<div><div class="lbl">Tags</div><div class="val">${stu.tags}</div></div>` : '<div></div>'}
+</div>
+<hr class="divider2">
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:36px;text-align:center">S.NO</th>
+      <th>Fee Item</th>
+      <th>Mode</th>
+      <th style="text-align:right">${amtHeader}</th>
+      ${gstHeaders}
+      <th style="text-align:right">Total Amount</th>
+    </tr>
+  </thead>
+  <tbody>${lineRows}</tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="${showGST ? 3 : 3}" style="padding:8px">Grand Total</td>
+      <td style="text-align:right;padding:8px">${fmtINR(subtotal)}</td>
+      ${showGST ? `<td></td><td style="text-align:center;padding:8px;font-size:11px">Tax: ${fmtINR(totalTax)}</td>` : ''}
+      <td style="text-align:right;padding:8px;color:#4f46e5">${fmtINR(invoice.total)}</td>
+    </tr>
+  </tfoot>
+</table>
+
+${ss.terms ? `<div style="margin-top:16px;font-size:11px;color:#374151"><strong>Terms:</strong> ${ss.terms}</div>` : ''}
+${ss.footerText ? `<div style="margin-top:8px;font-size:11px;color:#6b7280;text-align:center">${ss.footerText}</div>` : ''}
+<div class="footer-note">This is a computer generated receipt. No signature is required.</div>
+<script>window.onload = function() { window.print(); }</script>
+</body></html>`;
+  };
+
+  const thStyle = 'padding:8px;font-size:11px;color:#6b7280;border-top:2px solid #1f2937;border-bottom:1px solid #d1d5db;font-weight:700;background:#f9fafb;';
 
   const handlePrint = () => {
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`
-      <html><head><title>Receipt ${invoice.invoiceNumber || ''}</title>
-      <style>
-        * { box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; padding: 32px; color: #1f2937; font-size: 13px; }
-        .flex { display: flex; justify-content: space-between; align-items: flex-start; }
-        .logo { max-height: 70px; max-width: 150px; object-fit: contain; }
-        .school { font-size: 18px; font-weight: 700; }
-        .meta { color: #6b7280; font-size: 11px; margin-top: 2px; }
-        hr { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-        th { background: #f9fafb; text-align: left; padding: 8px 10px; font-size: 11px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-        td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
-        .total td { font-weight: 700; background: #f9fafb; border-top: 2px solid #e5e7eb; border-bottom: none; font-size: 14px; }
-        .inv-num { font-size: 20px; font-weight: 700; color: #4f46e5; }
-        @media print { body { padding: 0; } }
-      </style></head><body>
-      <div class="flex">
-        ${ss.logo ? `<img src="${ss.logo}" class="logo">` : '<div></div>'}
-        <div style="text-align:right">
-          <div class="school">${ss.name || ''}</div>
-          ${ss.address ? `<div class="meta">${ss.address}</div>` : ''}
-          ${ss.phone ? `<div class="meta">Ph: ${ss.phone}</div>` : ''}
-          ${ss.gstn ? `<div class="meta">GSTIN: ${ss.gstn}</div>` : ''}
-        </div>
-      </div>
-      <hr>
-      <div class="flex" style="margin-bottom:16px">
-        <div>
-          ${invoice.invoiceNumber ? `<div class="inv-num">${invoice.invoiceNumber}</div>` : '<div style="color:#9ca3af;font-style:italic">Concession — No Invoice #</div>'}
-          <div class="meta">Date: ${new Date(invoice.paymentDate || invoice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-weight:600">${invoice.student?.user?.name || invoice.student?.name || ''}</div>
-          <div class="meta">Roll: ${invoice.student?.rollNumber || ''}</div>
-        </div>
-      </div>
-      <table>
-        <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
-        <tbody>
-          ${(invoice.lineItems || []).map((li: any) => `<tr><td>${li.description || li.name || ''}</td><td style="text-align:right">₹${(li.amount || 0).toLocaleString('en-IN')}</td></tr>`).join('')}
-        </tbody>
-        <tfoot>
-          <tr class="total"><td>Total Paid · <span style="color:#6b7280;font-weight:400;font-size:11px">${(invoice.paymentMode || '').replace(/_/g, ' ')}</span></td><td style="text-align:right">₹${(invoice.total || 0).toLocaleString('en-IN')}</td></tr>
-        </tfoot>
-      </table>
-      ${ss.footerText ? `<p style="text-align:center;color:#9ca3af;font-size:11px;margin-top:24px">${ss.footerText}</p>` : ''}
-      <script>window.onload = function() { window.print(); window.close(); }</script>
-      </body></html>
-    `);
+    w.document.write(buildHTML());
     w.document.close();
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h3 className="text-lg font-semibold">
-            {invoice.invoiceNumber ? `Receipt: ${invoice.invoiceNumber}` : 'Receipt (Concession)'}
-          </h3>
-          <div className="flex gap-3">
-            <button onClick={handlePrint} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              {invoice.invoiceNumber ? `Receipt: ${invoice.invoiceNumber}` : 'Receipt (Concession)'}
+            </h3>
+            {invoice.isVoid && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded ml-2">VOID</span>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handlePrint}
+              className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
               Print / Save PDF
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none px-1">&times;</button>
           </div>
         </div>
-        <div className="p-6">
-          {/* Preview */}
-          <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
-            <div className="flex justify-between items-start mb-3">
+
+        {/* Preview pane */}
+        <div className="overflow-y-auto p-5 flex-1">
+          <div className="border border-gray-200 rounded-xl bg-white p-6 font-mono text-xs shadow-sm" style={{ fontFamily: 'Arial, sans-serif' }}>
+            {/* School header */}
+            <div className="flex justify-between items-start mb-2">
               {ss.logo && <img src={ss.logo} alt="logo" className="max-h-12 object-contain" />}
               <div className="text-right">
-                <p className="font-bold text-gray-900">{ss.name}</p>
-                {ss.address && <p className="text-xs text-gray-500">{ss.address}</p>}
-                {ss.phone && <p className="text-xs text-gray-500">Ph: {ss.phone}</p>}
+                <p className="text-base font-extrabold text-gray-900">{ss.name}</p>
+                {ss.showAddress && ss.address && <p className="text-xs text-gray-500">{ss.address}</p>}
+                {ss.showPhone && ss.phone && <p className="text-xs text-gray-500">Ph: {ss.phone}</p>}
+                {ss.gstn && <p className="text-xs font-semibold text-gray-700">GSTIN: {ss.gstn}</p>}
+                {showBankDetails && ss.bankDetails && <p className="text-xs text-gray-500 mt-1">{ss.bankDetails}</p>}
               </div>
             </div>
-            <hr className="my-3" />
-            <div className="flex justify-between mb-4">
-              <div>
-                {invoice.invoiceNumber
-                  ? <p className="text-xl font-bold text-indigo-700">{invoice.invoiceNumber}</p>
-                  : <p className="text-sm text-gray-400 italic">No Invoice Number</p>}
-                <p className="text-xs text-gray-400">{fmtDate(invoice.paymentDate || invoice.createdAt)}</p>
-              </div>
-              <div className="text-right">
-                <p className="font-semibold text-sm">{invoice.student?.user?.name || invoice.student?.name || ''}</p>
-              </div>
+            <hr className="border-gray-800 border-t-2 my-2" />
+            <p className="text-center font-bold tracking-widest text-sm uppercase text-gray-800 py-1">Fee Receipt</p>
+            <hr className="border-gray-200 my-2" />
+
+            {/* Student block */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3">
+              <div><span className="text-gray-400 uppercase text-[10px]">Student ID</span><p className="font-semibold">{stu.studentId || stu.rollNumber || '—'}</p></div>
+              <div><span className="text-gray-400 uppercase text-[10px]">Date</span><p className="font-semibold">{dateStr}</p></div>
+              <div><span className="text-gray-400 uppercase text-[10px]">Student Name</span><p className="font-semibold">{stu.name || invoice.student?.user?.name || '—'}</p></div>
+              <div><span className="text-gray-400 uppercase text-[10px]">Receipt No.</span><p className="font-semibold text-indigo-700">{invoice.invoiceNumber || 'N/A'}</p></div>
+              {stu.parentName && <><div><span className="text-gray-400 uppercase text-[10px]">Father's Name</span><p className="font-semibold">{stu.parentName}</p></div><div /></>}
+              {stu.className && <><div><span className="text-gray-400 uppercase text-[10px]">Classroom</span><p className="font-semibold">{stu.className}</p></div><div /></>}
             </div>
-            {invoice.lineItems?.map((li: any, i: number) => (
-              <div key={i} className="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
-                <span className="text-gray-700">{li.description || li.name}</span>
-                <span className="font-medium">₹{(li.amount || 0).toLocaleString('en-IN')}</span>
-              </div>
-            ))}
-            <div className="flex justify-between font-bold text-base pt-3 mt-1 border-t-2 border-gray-200">
-              <span>Total</span>
-              <span className="text-indigo-700">₹{(invoice.total || 0).toLocaleString('en-IN')}</span>
-            </div>
-            <p className="text-xs text-gray-400 mt-2 capitalize">{invoice.paymentMode?.replace(/_/g, ' ')}</p>
+            <hr className="border-gray-200 mb-2" />
+
+            {/* Fee table */}
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-t-2 border-gray-800 border-b border-gray-300">
+                  <th className="text-center py-1.5 px-2 text-gray-500 font-semibold w-8">#</th>
+                  <th className="text-left py-1.5 px-2 text-gray-500 font-semibold">Fee Item</th>
+                  <th className="text-left py-1.5 px-2 text-gray-500 font-semibold">Mode</th>
+                  <th className="text-right py-1.5 px-2 text-gray-500 font-semibold">{showGST ? 'Base Amt' : 'Amount'}</th>
+                  {showGST && <>
+                    <th className="text-right py-1.5 px-2 text-gray-500 font-semibold">GST%</th>
+                    <th className="text-center py-1.5 px-2 text-gray-500 font-semibold">GST Breakup</th>
+                  </>}
+                  <th className="text-right py-1.5 px-2 text-gray-500 font-semibold">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(invoice.lineItems || []).map((li: any, i: number) => {
+                  const base = showGST ? (li.amount - (li.taxAmount || 0)) : li.amount;
+                  const split = gstSplit(li);
+                  const taxType = (li.taxType || 'cgst_sgst').toLowerCase();
+                  return (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="text-center py-1.5 px-2 text-gray-500">{i + 1}</td>
+                      <td className="py-1.5 px-2 font-medium text-gray-800">{li.description}</td>
+                      <td className="py-1.5 px-2 text-gray-600">
+                        <span>{modeLabel(invoice.paymentMode)}</span>
+                        {invoice.chequeNo && <p className="text-[10px] text-gray-400">Cheque: {invoice.chequeNo}</p>}
+                        {invoice.ddNo && <p className="text-[10px] text-gray-400">DD: {invoice.ddNo}</p>}
+                        {invoice.transactionRef && !invoice.chequeNo && !invoice.ddNo &&
+                          <p className="text-[10px] text-gray-400">Ref: {invoice.transactionRef}</p>}
+                      </td>
+                      <td className="py-1.5 px-2 text-right">{fmtINR(base)}</td>
+                      {showGST && <>
+                        <td className="py-1.5 px-2 text-right">{li.taxRate ? `${li.taxRate}%` : '—'}</td>
+                        <td className="py-1.5 px-2 text-center text-[10px] text-gray-600">
+                          {li.taxAmount ? (
+                            taxType === 'igst'
+                              ? `IGST: ${fmtINR(split.igst)}`
+                              : <><p>CGST: {fmtINR(split.cgst)}</p><p>SGST: {fmtINR(split.sgst)}</p></>
+                          ) : '—'}
+                        </td>
+                      </>}
+                      <td className="py-1.5 px-2 text-right font-semibold">{fmtINR(li.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-800 bg-gray-50 font-bold">
+                  <td colSpan={showGST ? 3 : 3} className="py-2 px-2">Grand Total</td>
+                  <td className="py-2 px-2 text-right">{fmtINR(subtotal)}</td>
+                  {showGST && <>
+                    <td></td>
+                    <td className="py-2 px-2 text-center text-[10px]">Tax: {fmtINR(totalTax)}</td>
+                  </>}
+                  <td className="py-2 px-2 text-right text-indigo-700 text-sm">{fmtINR(invoice.total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {ss.terms && <p className="text-[10px] text-gray-500 mt-3"><strong>Terms:</strong> {ss.terms}</p>}
+            {ss.footerText && <p className="text-[10px] text-gray-400 text-center mt-2">{ss.footerText}</p>}
+            <p className="text-[10px] text-gray-400 text-center mt-4 border-t border-dashed border-gray-200 pt-2">
+              This is a computer generated receipt. No signature is required.
+            </p>
           </div>
         </div>
       </div>

@@ -33,4 +33,7 @@ const UserSchema = new Schema<IUser>({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+UserSchema.index({ institution: 1, role: 1 });
+UserSchema.index({ name: 'text' });  // fast name search for student lookup
+
 export default mongoose.model<IUser>('User', UserSchema);

@@ -1,24 +1,27 @@
-import React, { useState } from 'react';
-import Overview from './sections/Overview';
-import ClassesSection from './sections/ClassesSection';
-import StudentsSection from './sections/StudentsSection';
-import TeachersSection from './sections/TeachersSection';
-import AttendanceSection from './sections/AttendanceSection';
-import GradesSection from './sections/GradesSection';
-import HomeworkSection from './sections/HomeworkSection';
-import NoticesSection from './sections/NoticesSection';
-import FeesSection from './sections/FeesSection';
-import LeavesSection from './sections/LeavesSection';
-import TimetableSection from './sections/TimetableSection';
-import PTMSection from './sections/PTMSection';
-import SchoolSettingsSection from './sections/SchoolSettingsSection';
-import CampusSection from './sections/CampusSection';
-import RolesSection from './sections/RolesSection';
-import UsersSection from './sections/UsersSection';
-import FeeBundlesSection from './sections/FeeBundlesSection';
-import FeeCollectionSection from './sections/FeeCollectionSection';
-import ReportsSection from './sections/ReportsSection';
-import WidgetDashboard from './sections/WidgetDashboard';
+import React, { lazy, Suspense, useState } from 'react';
+import Spinner from '../../components/Spinner';
+
+// Lazy-load every section so only the active section's JS is downloaded
+const Overview           = lazy(() => import('./sections/Overview'));
+const ClassesSection     = lazy(() => import('./sections/ClassesSection'));
+const StudentsSection    = lazy(() => import('./sections/StudentsSection'));
+const TeachersSection    = lazy(() => import('./sections/TeachersSection'));
+const AttendanceSection  = lazy(() => import('./sections/AttendanceSection'));
+const GradesSection      = lazy(() => import('./sections/GradesSection'));
+const HomeworkSection    = lazy(() => import('./sections/HomeworkSection'));
+const NoticesSection     = lazy(() => import('./sections/NoticesSection'));
+const FeesSection        = lazy(() => import('./sections/FeesSection'));
+const LeavesSection      = lazy(() => import('./sections/LeavesSection'));
+const TimetableSection   = lazy(() => import('./sections/TimetableSection'));
+const PTMSection         = lazy(() => import('./sections/PTMSection'));
+const SchoolSettingsSection = lazy(() => import('./sections/SchoolSettingsSection'));
+const CampusSection      = lazy(() => import('./sections/CampusSection'));
+const RolesSection       = lazy(() => import('./sections/RolesSection'));
+const UsersSection       = lazy(() => import('./sections/UsersSection'));
+const FeeBundlesSection  = lazy(() => import('./sections/FeeBundlesSection'));
+const FeeCollectionSection = lazy(() => import('./sections/FeeCollectionSection'));
+const ReportsSection     = lazy(() => import('./sections/ReportsSection'));
+const WidgetDashboard    = lazy(() => import('./sections/WidgetDashboard'));
 
 const NAV = [
   // ── Core ──────────────────────────────────────────────────
@@ -167,7 +170,9 @@ const Dashboard = () => {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <Section />
+          <Suspense fallback={<div className="flex items-center justify-center h-64"><Spinner /></div>}>
+            <Section />
+          </Suspense>
         </main>
       </div>
     </div>

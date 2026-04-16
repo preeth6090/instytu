@@ -3,6 +3,8 @@ import { protect as authenticate } from '../middleware/auth';
 import Invoice from '../models/Invoice';
 import Institution from '../models/Institution';
 import Fee from '../models/Fee';
+import Student from '../models/Student';
+import User from '../models/User';
 
 const router = express.Router();
 
@@ -44,10 +46,15 @@ router.get('/', authenticate, async (req: any, res) => {
       if (to) filter.paymentDate.$lte = new Date(to as string);
     }
     const invoices = await Invoice.find(filter)
-      .populate({ path: 'student', populate: [{ path: 'user', select: 'name' }, { path: 'class', select: 'name' }] })
+      .populate({ path: 'student', populate: [
+        { path: 'user', select: 'name' },
+        { path: 'class', select: 'name' },
+        { path: 'parents', select: 'name' },
+      ]})
       .populate('campus', 'name')
       .populate('generatedBy', 'name')
-      .sort({ paymentDate: -1 });
+      .sort({ paymentDate: -1 })
+      .lean();
     res.json(invoices);
   } catch (e) { res.status(500).json({ message: 'Server error' }); }
 });
@@ -88,7 +95,8 @@ router.post('/collect', authenticate, async (req: any, res) => {
     const inst = await Institution.findById(req.user.institution);
     if (!inst) return res.status(404).json({ message: 'Institution not found' });
 
-    // Freeze school snapshot
+    // Freeze school snapshot (including display settings)
+    const s = inst.invoiceSettings || ({} as any);
     const schoolSnapshot = {
       name: inst.name,
       address: inst.address,
@@ -97,9 +105,30 @@ router.post('/collect', authenticate, async (req: any, res) => {
       gstn: inst.gstn,
       gstPercentage: inst.gstPercentage,
       logo: inst.logo,
-      headerText: inst.invoiceSettings?.headerText,
-      footerText: inst.invoiceSettings?.footerText,
-      terms: inst.invoiceSettings?.terms,
+      bankDetails: inst.bankDetails,
+      headerText: s.headerText,
+      footerText: s.footerText,
+      terms: s.terms,
+      showGST: s.showGST ?? false,
+      showAddress: s.showAddress ?? true,
+      showPhone: s.showPhone ?? true,
+      showBankDetails: s.showBankDetails ?? false,
+    };
+
+    // Freeze student snapshot (for reprints)
+    const studentDoc = await Student.findById(studentId)
+      .populate('user', 'name email')
+      .populate('class', 'name')
+      .populate('parents', 'name');
+    const parentUser = studentDoc?.parents?.[0] as any;
+    const studentSnapshot = {
+      name: (studentDoc?.user as any)?.name || '',
+      studentId: studentDoc?.admissionNo || studentDoc?.rollNumber || '',
+      rollNumber: studentDoc?.rollNumber || '',
+      className: (studentDoc?.class as any)?.name || '',
+      parentName: parentUser?.name || '',
+      parentPhone: studentDoc?.phone || '',
+      tags: '',
     };
 
     // Filter out zero/negative amounts
@@ -127,25 +156,30 @@ router.post('/collect', authenticate, async (req: any, res) => {
         invoiceNumber = await generateInvoiceNumber(req.user.institution.toString());
       }
 
-      const lineItems = payments.map((p: any) => ({
+      const total = payments.reduce((s: number, p: any) => s + p.payAmount, 0);
+
+      // Build line items with GST info from the fee payments
+      const lineItemsWithGST = payments.map((p: any) => ({
         description: p.feeName,
         amount: p.payAmount,
-        taxable: false,
-        taxAmount: 0,
+        taxable: p.taxable || false,
+        taxType: p.taxType || 'none',
+        taxRate: p.taxRate || 0,
+        taxAmount: p.taxAmount || 0,
       }));
 
-      const total = payments.reduce((s: number, p: any) => s + p.payAmount, 0);
+      const totalTax = lineItemsWithGST.reduce((s: number, li: any) => s + (li.taxAmount || 0), 0);
 
       const invoice = await Invoice.create({
         invoiceNumber,
         student: studentId,
         institution: req.user.institution,
         feeIds: payments.map((p: any) => p.feeId),
-        lineItems,
+        lineItems: lineItemsWithGST,
         discounts: [],
-        subtotal: total,
+        subtotal: total - totalTax,
         totalDiscount: 0,
-        totalTax: 0,
+        totalTax,
         total,
         paymentMode: mode,
         chequeNo: chequeNo || undefined,
@@ -155,6 +189,7 @@ router.post('/collect', authenticate, async (req: any, res) => {
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
         isConcessionOnly: isConcession,
         schoolSnapshot,
+        studentSnapshot,
         generatedBy: req.user._id,
         academicYear: academicYear || '2025-26',
       });

@@ -8,23 +8,34 @@ import Class from '../models/Class';
 export const getStudents = async (req: AuthRequest, res: Response) => {
   try {
     const { classId, search } = req.query;
-    const filter: any = { institution: req.user!.institution };
+    const filter: any = { institution: req.user!.institution, isActive: true };
     if (classId) filter.class = classId;
 
-    let students = await Student.find(filter)
+    if (search) {
+      const q = search as string;
+      const re = new RegExp(q, 'i');
+
+      // Search by rollNumber / admissionNo directly on Student
+      filter.$or = [
+        { rollNumber: re },
+        { admissionNo: re },
+      ];
+
+      // Also match by user name — find matching user IDs first
+      const matchingUsers = await User.find({ name: re }, '_id').lean();
+      if (matchingUsers.length) {
+        filter.$or.push({ user: { $in: matchingUsers.map(u => u._id) } });
+      }
+    }
+
+    const students = await Student.find(filter)
       .populate('user', 'name email avatar')
       .populate('class', 'name grade section')
+      .populate('campus', 'name')
       .populate('parents', 'name email')
-      .sort({ rollNumber: 1 });
-
-    if (search) {
-      const q = (search as string).toLowerCase();
-      students = students.filter(s =>
-        (s.user as any).name?.toLowerCase().includes(q) ||
-        s.rollNumber?.toLowerCase().includes(q) ||
-        s.admissionNo?.toLowerCase().includes(q)
-      );
-    }
+      .sort({ rollNumber: 1 })
+      .limit(search ? 20 : 500)  // cap non-search loads; search returns top 20
+      .lean();
 
     res.json(students);
   } catch (err) {
