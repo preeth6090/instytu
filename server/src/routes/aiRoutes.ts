@@ -9,6 +9,8 @@ import {
   attendanceInsight,
   generateFeeReminder,
   ptmSummary,
+  generateWidget,
+  getWidgetData,
 } from '../controllers/aiController';
 
 const router = express.Router();
@@ -23,5 +25,7 @@ router.post('/leave-reason', generateLeaveReason);
 router.post('/attendance-insight', attendanceInsight);
 router.post('/fee-reminder', generateFeeReminder);
 router.post('/ptm-summary', ptmSummary);
+router.post('/generate-widget', generateWidget);
+router.post('/widget-data', getWidgetData);
 
 export default router;

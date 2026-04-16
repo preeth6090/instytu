@@ -19,6 +19,13 @@ import feeRoutes from './routes/feeRoutes';
 import messageRoutes from './routes/messageRoutes';
 import timetableRoutes from './routes/timetableRoutes';
 import ptmRoutes from './routes/ptmRoutes';
+import campusRoutes from './routes/campusRoutes';
+import customRoleRoutes from './routes/customRoleRoutes';
+import feeBundleRoutes from './routes/feeBundleRoutes';
+import invoiceRoutes from './routes/invoiceRoutes';
+import reportRoutes from './routes/reportRoutes';
+import userManagementRoutes from './routes/userManagementRoutes';
+import widgetRoutes from './routes/widgetRoutes';
 
 dotenv.config();
 
@@ -80,6 +87,13 @@ app.use('/api/fees', feeRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/timetable', timetableRoutes);
 app.use('/api/ptm', ptmRoutes);
+app.use('/api/campuses', campusRoutes);
+app.use('/api/custom-roles', customRoleRoutes);
+app.use('/api/fee-bundles', feeBundleRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/users', userManagementRoutes);
+app.use('/api/widgets', widgetRoutes);
 
 app.get('/', (_req, res) => {
   res.json({ message: 'Instytu API running ✅' });
