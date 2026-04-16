@@ -161,27 +161,6 @@ const printReportCard = (student: any, gradesForStudent: any[], classObj: any, a
     </div>
   </div>
 
-  <div class="co-disc">
-    <div>
-      <div class="area-title" style="background:#b45309">Co-Scholastic Area</div>
-      <table style="margin:0">
-        <tr><th style="border:1px solid #d97706;padding:5px 8px;background:#fef3c7;font-size:11px;text-align:left">Activity</th><th style="border:1px solid #d97706;padding:5px 8px;background:#fef3c7;font-size:11px">Grade</th></tr>
-        ${['Work Education','Art Education','Health & Physical Education','Social Skills','Sports'].map(a =>
-          `<tr><td style="border:1px solid #fde68a;padding:4px 8px;font-size:11px">${a}</td><td style="border:1px solid #fde68a;padding:4px 8px">&nbsp;</td></tr>`
-        ).join('')}
-      </table>
-    </div>
-    <div>
-      <div class="area-title" style="background:#1d4ed8">Discipline</div>
-      <table style="margin:0">
-        <tr><th style="border:1px solid #93c5fd;padding:5px 8px;background:#dbeafe;font-size:11px;text-align:left">Activity</th><th style="border:1px solid #93c5fd;padding:5px 8px;background:#dbeafe;font-size:11px">Grade</th></tr>
-        ${['Regularity & Punctuality','Sincerity','Behaviour & Values','Respectfulness for Rules','Attitude Towards Teachers','Attitude Towards Society'].map(a =>
-          `<tr><td style="border:1px solid #bfdbfe;padding:4px 8px;font-size:11px">${a}</td><td style="border:1px solid #bfdbfe;padding:4px 8px">&nbsp;</td></tr>`
-        ).join('')}
-      </table>
-    </div>
-  </div>
-
   <div class="promoted">Congratulation! Promoted to Class – _______________</div>
 
   <div style="margin:8px 0">
