@@ -28,7 +28,10 @@ export const getMyInstitution = async (req: AuthRequest, res: Response) => {
 // PUT /api/institutions/me — update branding + settings (admin)
 export const updateMyInstitution = async (req: AuthRequest, res: Response) => {
   try {
-    const allowed = ['name', 'tagline', 'logo', 'primaryColor', 'phone', 'address', 'email'];
+    const allowed = [
+      'name', 'tagline', 'logo', 'primaryColor', 'phone', 'address', 'email',
+      'website', 'gstn', 'gstPercentage', 'bankDetails', 'invoiceSettings',
+    ];
     const updates: any = {};
     allowed.forEach(key => { if (req.body[key] !== undefined) updates[key] = req.body[key]; });
 

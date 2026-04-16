@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import api from '../../../api/axios';
 import Spinner from '../../../components/Spinner';
+import { gstin as validateGstin, email as validateEmail, phone as validatePhone } from '../../../utils/validate';
 
 const TABS = ['General', 'Invoice', 'Appearance'];
 
@@ -14,17 +15,26 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('instytu_user') || '{}');
-    api.get(`/institutions/${user.institution?._id || user.institution}`)
+    api.get('/institutions/me')
       .then(r => setInst(r.data))
+      .catch(() => setInst(null))
       .finally(() => setLoading(false));
   }, []);
 
   const save = async () => {
+    // Client-side validation
+    const emailErr = validateEmail(inst.email || '');
+    if (emailErr) { setError(`Email: ${emailErr}`); return; }
+    const phoneErr = validatePhone(inst.phone || '');
+    if (phoneErr) { setError(`Phone: ${phoneErr}`); return; }
+    const gstinErr = validateGstin(inst.gstn || '');
+    if (gstinErr) { setError(`GSTIN: ${gstinErr}`); return; }
+    if (inst.gstPercentage !== undefined && (Number(inst.gstPercentage) < 0 || Number(inst.gstPercentage) > 28)) {
+      setError('GST % must be between 0 and 28'); return;
+    }
     setSaving(true); setSaved(false); setError('');
     try {
-      const user = JSON.parse(localStorage.getItem('instytu_user') || '{}');
-      const r = await api.put(`/institutions/${user.institution?._id || user.institution}`, inst);
+      const r = await api.put('/institutions/me', inst);
       setInst(r.data);
       setSaved(true); setTimeout(() => setSaved(false), 3000);
     } catch (e: any) { setError(e.response?.data?.message || 'Failed to save'); }
@@ -47,9 +57,9 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
   if (!inst) return <div className="text-center py-20 text-gray-400">Settings not available</div>;
 
   return (
-    <div className="space-y-5">
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center justify-between gap-4">
-        <div className="flex gap-2">
+    <div className="space-y-5 p-4 sm:p-6">
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${tab === t ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t}</button>
@@ -65,7 +75,7 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
       {tab === 'General' && (
         <div className="bg-white rounded-2xl border border-gray-100 p-6 space-y-5">
           <h3 className="font-bold text-gray-900 text-base">Institution Details</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-xs font-semibold text-gray-600 block mb-1">Institution Name *</label>
               <input value={inst.name || ''} onChange={e => set('name', e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
@@ -128,7 +138,7 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
       {tab === 'Invoice' && (
         <div className="bg-white rounded-2xl border border-gray-100 p-6 space-y-5">
           <h3 className="font-bold text-gray-900 text-base">Invoice & Receipt Settings</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-gray-600 block mb-1">Invoice Prefix</label>
               <input value={inst.invoiceSettings?.prefix || 'INV'} onChange={e => setInv('prefix', e.target.value)} placeholder="INV" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400 font-mono" />

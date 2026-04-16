@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../api/axios';
 import Spinner from '../../../components/Spinner';
+import { phone as validatePhone } from '../../../utils/validate';
 
 interface Campus {
   _id: string;
@@ -39,6 +40,12 @@ const CampusSection = ({ role }: { role: string }) => {
   const save = async () => {
     if (!form.name?.trim()) { setError('Campus name is required'); return; }
     if (!form.code?.trim()) { setError('Campus code is required'); return; }
+    if (!/^[A-Z0-9]{1,10}$/.test((form.code || '').toUpperCase())) { setError('Code must be 1–10 uppercase letters/digits (e.g. MAIN, NORTH1)'); return; }
+    const phoneErr = validatePhone(form.phone || '');
+    if (phoneErr) { setError(phoneErr); return; }
+    // Duplicate code check
+    const dup = campuses.find(c => c.code === form.code?.toUpperCase() && c._id !== editing?._id);
+    if (dup) { setError(`Campus code "${form.code?.toUpperCase()}" is already in use`); return; }
     setSaving(true); setError('');
     try {
       if (editing) {
@@ -70,10 +77,10 @@ const CampusSection = ({ role }: { role: string }) => {
   const canEdit = role === 'admin' || role === 'superadmin';
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Campuses</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Campuses</h2>
           <p className="text-sm text-gray-500 mt-1">Manage branches and campuses of your institution</p>
         </div>
         {canEdit && (

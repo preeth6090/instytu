@@ -116,10 +116,17 @@ const FeeBundlesSection = ({ role }: { role: string }) => {
 
   const save = async () => {
     if (!form.name?.trim()) { setError('Bundle name is required'); return; }
+    if (!form.academicYear?.trim()) { setError('Academic year is required'); return; }
+    if (!/^\d{4}-\d{2}$/.test(form.academicYear)) { setError('Academic year format: YYYY-YY (e.g. 2025-26)'); return; }
     if (!form.components?.length) { setError('Add at least one fee component'); return; }
     for (const c of form.components) {
       if (!c.name?.trim()) { setError('All components must have a name'); return; }
+      if (!(Number(c.amount) > 0)) { setError(`Component "${c.name || 'unnamed'}": amount must be greater than 0`); return; }
+      if (c.taxable && (Number(c.taxRate) < 0 || Number(c.taxRate) > 100)) { setError(`Component "${c.name}": tax rate must be 0–100`); return; }
     }
+    // Duplicate bundle name in same academic year
+    const dup = bundles.find(b => b.name?.toLowerCase() === form.name.trim().toLowerCase() && b.academicYear === form.academicYear && b._id !== editing?._id);
+    if (dup) { setError(`A bundle named "${form.name}" already exists for ${form.academicYear}`); return; }
     setSaving(true); setError('');
     try {
       if (editing) {
@@ -153,7 +160,13 @@ const FeeBundlesSection = ({ role }: { role: string }) => {
   };
 
   const saveDiscount = async () => {
-    if (!discountStudent) return;
+    if (!discountStudent) { setError('Please select a student first'); return; }
+    const hasAmount = discForm.amount !== '' && Number(discForm.amount) > 0;
+    const hasPct = discForm.percentage !== '' && Number(discForm.percentage) > 0;
+    if (!hasAmount && !hasPct) { setError('Enter either a flat amount or a percentage'); return; }
+    if (hasAmount && hasPct) { setError('Use either flat amount or percentage, not both'); return; }
+    if (hasPct && Number(discForm.percentage) > 100) { setError('Percentage cannot exceed 100'); return; }
+    if (discForm.applicableTo === 'bundle' && !discForm.bundleId) { setError('Please select a bundle'); return; }
     setSavingDisc(true);
     try {
       const payload: any = { student: discountStudent, type: discForm.type, label: discForm.label, applicableTo: discForm.applicableTo === 'bundle' ? discForm.bundleId : 'all' };
