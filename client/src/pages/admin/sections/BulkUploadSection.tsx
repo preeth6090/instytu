@@ -106,7 +106,6 @@ const BulkUploadSection = ({ role }: { role: string }) => {
   const [rows, setRows] = useState<RowResult[]>([]);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
-  const [classes, setClasses] = useState<any[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState('');
   const [parseError, setParseError] = useState('');
@@ -138,7 +137,6 @@ const BulkUploadSection = ({ role }: { role: string }) => {
         if (type === 'students') {
           const c = await api.get('/classes').catch(() => ({ data: [] }));
           const classArr = Array.isArray(c.data) ? c.data : [];
-          setClasses(classArr);
           classArr.forEach((cls: any) => { classMap[cls.name.toLowerCase()] = cls._id; });
         }
 
