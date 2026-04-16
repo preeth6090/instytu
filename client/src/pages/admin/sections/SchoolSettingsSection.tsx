@@ -17,7 +17,11 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
   useEffect(() => {
     api.get('/institutions/me')
       .then(r => setInst(r.data))
-      .catch(() => setInst(null))
+      .catch(e => {
+        const msg = e.response?.data?.message || e.message || 'Could not load settings';
+        setError(msg);
+        setInst(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -54,7 +58,18 @@ const SchoolSettingsSection = ({ role }: { role: string }) => {
   const setInv = (key: string, val: any) => setInst((p: any) => ({ ...p, invoiceSettings: { ...p.invoiceSettings, [key]: val } }));
 
   if (loading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
-  if (!inst) return <div className="text-center py-20 text-gray-400">Settings not available</div>;
+  if (!inst) return (
+    <div className="text-center py-20 text-gray-400 px-6">
+      <p className="text-4xl mb-3">⚙️</p>
+      <p className="font-medium text-gray-600 mb-1">Settings could not be loaded</p>
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-4 py-2 mt-2 inline-block">{error}</p>}
+      <p className="text-xs text-gray-400 mt-3">This may be a server connection issue. The backend needs to be deployed with the latest changes.</p>
+      <button onClick={() => { setLoading(true); setError(''); api.get('/institutions/me').then(r => setInst(r.data)).catch(e => setError(e.response?.data?.message || e.message)).finally(() => setLoading(false)); }}
+        className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm rounded-xl hover:bg-indigo-700">
+        Retry
+      </button>
+    </div>
+  );
 
   return (
     <div className="space-y-5 p-4 sm:p-6">

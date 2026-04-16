@@ -14,9 +14,11 @@ export const getGrades = async (req: AuthRequest, res: Response) => {
     if (academicYear) filter.academicYear = academicYear;
 
     const grades = await Grade.find(filter)
-      .populate('student', 'rollNumber')
+      .populate({ path: 'student', populate: { path: 'user', select: 'name' } })
+      .populate('class', 'name')
       .populate('recordedBy', 'name')
-      .sort({ subject: 1 });
+      .sort({ subject: 1 })
+      .lean();
 
     res.json(grades);
   } catch (err) {
