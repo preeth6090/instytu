@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import api from '../../../api/axios';
 import Spinner from '../../../components/Spinner';
 
-const PAYMENT_MODES = [
+const MODES = [
   { value: 'cash', label: 'Cash' },
   { value: 'cheque', label: 'Cheque' },
-  { value: 'dd', label: 'Demand Draft' },
+  { value: 'dd', label: 'DD' },
   { value: 'online_transfer', label: 'Online Transfer' },
   { value: 'card', label: 'Card' },
   { value: 'cash_deposit', label: 'Cash Deposit' },
@@ -15,13 +15,20 @@ const PAYMENT_MODES = [
   { value: 'fee_reduction', label: 'Fee Reduction' },
 ];
 
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const fmtDate = (d: string | Date) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+const fmtAmt = (n: number) => `₹${(n || 0).toLocaleString('en-IN')}`;
+
 interface Student {
   _id: string;
-  user: { _id: string; name: string; email: string };
+  user: { name: string; email: string };
   rollNumber: string;
   admissionNo?: string;
-  class?: { name: string };
-  campus?: { name: string };
+  dateOfBirth?: string;
+  phone?: string;
+  class?: { _id: string; name: string };
+  campus?: { _id: string; name: string };
+  parents?: { _id: string; name: string; email: string }[];
 }
 
 interface Fee {
@@ -30,404 +37,662 @@ interface Fee {
   amount: number;
   amountPaid: number;
   dueDate: string;
-  status: string;
-  bundle?: { name: string };
+  status: 'pending' | 'partial' | 'overdue' | 'paid' | 'waived';
+  bundle?: { _id: string; name: string };
   academicYear: string;
+  notes?: string;
 }
 
 interface Invoice {
   _id: string;
   invoiceNumber?: string;
   createdAt: string;
-  totalAmount: number;
-  amountPaid: number;
+  paymentDate: string;
+  total: number;
   paymentMode: string;
-  lineItems: { name: string; amount: number; taxAmount?: number }[];
-  discounts: { type: string; label?: string; amount: number }[];
-  schoolSnapshot: { name: string; address?: string; phone?: string; gstn?: string; gstPercentage?: number; logo?: string; bankDetails?: string; invoiceSettings?: any };
-  student: { name: string; rollNumber: string; admissionNo?: string; class?: string; campus?: string };
+  lineItems: { description: string; amount: number }[];
   isVoid: boolean;
   isConcessionOnly: boolean;
+  schoolSnapshot: any;
+  student: any;
 }
 
+const statusColor: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-700',
+  partial: 'bg-orange-100 text-orange-700',
+  overdue: 'bg-red-100 text-red-700',
+  paid: 'bg-green-100 text-green-700',
+  waived: 'bg-gray-100 text-gray-400',
+};
+
 const FeeCollectionSection = ({ role }: { role: string }) => {
+  // ── Search ──────────────────────────────────────────────
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<Student[]>([]);
+  const [results, setResults] = useState<Student[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const searchTimer = useRef<any>(null);
+
+  // ── Selected student ────────────────────────────────────
+  const [student, setStudent] = useState<Student | null>(null);
   const [fees, setFees] = useState<Fee[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loadingFees, setLoadingFees] = useState(false);
-  const [selectedFees, setSelectedFees] = useState<string[]>([]);
-  const [paymentMode, setPaymentMode] = useState('cash');
-  const [transactionId, setTransactionId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [collecting, setCollecting] = useState(false);
-  const [collectionError, setCollectionError] = useState('');
-  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
-  const [activeTab, setActiveTab] = useState<'dues' | 'history'>('dues');
-  const searchTimeout = useRef<any>(null);
+  const [loadingData, setLoadingData] = useState(false);
+  const [activeTab, setActiveTab] = useState<'payment' | 'history'>('payment');
 
-  // Search students
+  // ── Payment form ─────────────────────────────────────────
+  const [payAmounts, setPayAmounts] = useState<Record<string, string>>({}); // feeId → string
+  const [payModes, setPayModes] = useState<Record<string, string>>({});     // feeId → mode
+  const [paymentDate, setPaymentDate] = useState(todayStr());
+  const [transactionRef, setTransactionRef] = useState('');
+  const [payNotes, setPayNotes] = useState('');
+  const [quickAmount, setQuickAmount] = useState('');
+
+  // ── Confirmation / processing ───────────────────────────
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [processError, setProcessError] = useState('');
+
+  // ── Print ────────────────────────────────────────────────
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+
+  // ── Search debounce ──────────────────────────────────────
   useEffect(() => {
-    clearTimeout(searchTimeout.current);
-    if (!search.trim()) { setSearchResults([]); return; }
-    searchTimeout.current = setTimeout(async () => {
+    clearTimeout(searchTimer.current);
+    if (!search.trim()) { setResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
         const r = await api.get(`/students?search=${encodeURIComponent(search)}`);
-        setSearchResults(Array.isArray(r.data) ? r.data : r.data.students || []);
-      } catch { setSearchResults([]); }
+        setResults(Array.isArray(r.data) ? r.data : []);
+      } catch { setResults([]); }
       finally { setSearching(false); }
     }, 300);
   }, [search]);
 
   const selectStudent = async (s: Student) => {
-    setSelectedStudent(s);
-    setSearchResults([]);
-    setSearch('');
-    setSelectedFees([]);
-    setLoadingFees(true);
+    setStudent(s); setResults([]); setSearch('');
+    setPayAmounts({}); setPayModes({}); setActiveTab('payment');
+    setLoadingData(true);
     try {
-      const [f, inv] = await Promise.all([
+      const [fRes, iRes] = await Promise.all([
         api.get(`/fees?student=${s._id}`),
         api.get(`/invoices?student=${s._id}`),
       ]);
-      setFees(Array.isArray(f.data) ? f.data : f.data.fees || []);
-      setInvoices(Array.isArray(inv.data) ? inv.data : inv.data.invoices || []);
+      const feeList: Fee[] = Array.isArray(fRes.data) ? fRes.data : fRes.data.fees || [];
+      setFees(feeList);
+      // Init modes to 'cash' for all pending fees
+      const modes: Record<string, string> = {};
+      feeList.forEach(f => { if (f.status !== 'paid' && f.status !== 'waived') modes[f._id] = 'cash'; });
+      setPayModes(modes);
+      setInvoices(Array.isArray(iRes.data) ? iRes.data : iRes.data.invoices || []);
     } catch { setFees([]); setInvoices([]); }
-    finally { setLoadingFees(false); }
+    finally { setLoadingData(false); }
   };
 
-  const toggleFee = (id: string) => {
-    setSelectedFees(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const pendingFees = fees.filter(f => f.status !== 'paid' && f.status !== 'waived');
+
+  // ── Quick amount distribution ─────────────────────────────
+  const distributeAmount = (totalStr: string) => {
+    const total = parseFloat(totalStr) || 0;
+    if (!total) { setPayAmounts({}); return; }
+    let remaining = total;
+    const newAmounts: Record<string, string> = {};
+    for (const fee of pendingFees) {
+      const balance = fee.amount - (fee.amountPaid || 0);
+      const pay = Math.min(balance, remaining);
+      if (pay > 0) newAmounts[fee._id] = String(pay);
+      remaining -= pay;
+      if (remaining <= 0) break;
+    }
+    setPayAmounts(newAmounts);
   };
 
-  const pendingFees = fees.filter(f => f.status === 'pending' || f.status === 'partial' || f.status === 'overdue');
-  const isConcessionOnly = ['scholarship', 'concession', 'fee_reduction'].includes(paymentMode);
+  // ── Computed totals ──────────────────────────────────────
+  const payingItems = pendingFees
+    .map(f => ({ fee: f, amount: parseFloat(payAmounts[f._id] || '0') || 0, mode: payModes[f._id] || 'cash' }))
+    .filter(x => x.amount > 0);
 
-  const collect = async () => {
-    if (!selectedStudent || !selectedFees.length) return;
-    setCollecting(true); setCollectionError('');
+  const payingTotal = payingItems.reduce((s, x) => s + x.amount, 0);
+
+  const totalPaid = fees.filter(f => f.status === 'paid').reduce((s, f) => s + f.amount, 0)
+    + fees.filter(f => f.status === 'partial').reduce((s, f) => s + (f.amountPaid || 0), 0);
+  const totalBalance = fees.reduce((s, f) => s + Math.max(0, f.amount - (f.amountPaid || 0)), 0);
+
+  // ── Confirm & Pay ─────────────────────────────────────────
+  const confirmPay = async () => {
+    if (!student || payingItems.length === 0) return;
+    setProcessing(true); setProcessError('');
     try {
-      const r = await api.post('/invoices', {
-        student: selectedStudent._id,
-        fees: selectedFees,
-        paymentMode,
-        transactionId: transactionId || undefined,
-        notes: notes || undefined,
+      const r = await api.post('/invoices/collect', {
+        studentId: student._id,
+        feePayments: payingItems.map(x => ({
+          feeId: x.fee._id,
+          feeName: x.fee.title,
+          feeAmount: x.fee.amount,
+          payAmount: x.amount,
+          mode: x.mode,
+          bundleName: x.fee.bundle?.name,
+        })),
+        paymentDate,
+        transactionRef: transactionRef || undefined,
+        notes: payNotes || undefined,
+        academicYear: pendingFees[0]?.academicYear || '2025-26',
       });
-      const newInvoice: Invoice = r.data;
-      setInvoices(prev => [newInvoice, ...prev]);
-      // Refresh fees
-      const f = await api.get(`/fees?student=${selectedStudent._id}`);
-      setFees(Array.isArray(f.data) ? f.data : f.data.fees || []);
-      setSelectedFees([]);
-      setTransactionId(''); setNotes('');
-      setPrintInvoice(newInvoice);
+
+      // Refresh data
+      const [fRes, iRes] = await Promise.all([
+        api.get(`/fees?student=${student._id}`),
+        api.get(`/invoices?student=${student._id}`),
+      ]);
+      setFees(Array.isArray(fRes.data) ? fRes.data : fRes.data.fees || []);
+      const newInvoices: Invoice[] = Array.isArray(iRes.data) ? iRes.data : iRes.data.invoices || [];
+      setInvoices(newInvoices);
+
+      // Reset form
+      setPayAmounts({}); setTransactionRef(''); setPayNotes(''); setQuickAmount('');
+      setShowConfirm(false);
       setActiveTab('history');
+
+      // Auto-print first invoice from this batch
+      if (r.data.invoices?.length) setPrintInvoice(r.data.invoices[0]);
     } catch (e: any) {
-      setCollectionError(e.response?.data?.message || 'Failed to record payment');
+      setProcessError(e.response?.data?.message || 'Payment failed');
     } finally {
-      setCollecting(false);
+      setProcessing(false);
     }
   };
 
-  const selectedTotal = fees.filter(f => selectedFees.includes(f._id)).reduce((sum, f) => sum + (f.amount - (f.amountPaid || 0)), 0);
-
-  const statusColor: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    partial: 'bg-orange-100 text-orange-700',
-    overdue: 'bg-red-100 text-red-700',
-    paid: 'bg-green-100 text-green-700',
-    waived: 'bg-gray-100 text-gray-500',
-  };
-
-  const canEdit = role === 'admin' || role === 'superadmin' || role === 'staff';
+  const canCollect = role === 'admin' || role === 'superadmin' || role === 'staff';
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="mb-5">
         <h2 className="text-2xl font-bold text-gray-900">Fee Collection</h2>
-        <p className="text-sm text-gray-500 mt-1">Search a student to view dues and collect payments</p>
+        <p className="text-sm text-gray-500 mt-1">Search for a student to view dues and collect fees</p>
       </div>
 
-      {/* Student Search */}
+      {/* ── Search ── */}
       <div className="relative mb-6">
         <input
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm"
+          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm pr-10"
           placeholder="Search student by name, roll number, or admission number..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+          value={search} onChange={e => setSearch(e.target.value)}
         />
         {searching && <div className="absolute right-4 top-3.5"><Spinner /></div>}
-        {searchResults.length > 0 && (
-          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 z-20 overflow-hidden">
-            {searchResults.map(s => (
+        {results.length > 0 && (
+          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-2xl mt-1 z-20 overflow-hidden max-h-72 overflow-y-auto">
+            {results.map(s => (
               <button key={s._id} onClick={() => selectStudent(s)}
-                className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition border-b last:border-0">
-                <p className="font-medium text-gray-900">{s.user?.name}</p>
-                <p className="text-xs text-gray-500">
-                  Roll: {s.rollNumber}
-                  {s.admissionNo && ` · Adm: ${s.admissionNo}`}
-                  {s.class?.name && ` · Class: ${s.class.name}`}
-                  {s.campus?.name && ` · Campus: ${s.campus.name}`}
-                </p>
+                className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition border-b last:border-0 flex items-center gap-3">
+                <div className="w-9 h-9 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+                  {s.user?.name?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">{s.user?.name}</p>
+                  <p className="text-xs text-gray-500">
+                    Roll: {s.rollNumber}
+                    {s.admissionNo && ` · Adm: ${s.admissionNo}`}
+                    {s.class?.name && ` · ${s.class.name}`}
+                    {s.campus?.name && ` · ${s.campus.name}`}
+                  </p>
+                </div>
               </button>
             ))}
           </div>
         )}
       </div>
 
-      {selectedStudent && (
-        <>
-          {/* Student Card */}
-          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-5 flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-indigo-900">{selectedStudent.user?.name}</p>
-              <p className="text-xs text-indigo-600 mt-0.5">
-                Roll: {selectedStudent.rollNumber}
-                {selectedStudent.admissionNo && ` · Adm: ${selectedStudent.admissionNo}`}
-                {selectedStudent.class?.name && ` · ${selectedStudent.class.name}`}
-                {selectedStudent.campus?.name && ` · ${selectedStudent.campus.name}`}
-              </p>
-            </div>
-            <button onClick={() => { setSelectedStudent(null); setFees([]); setInvoices([]); setSelectedFees([]); }}
-              className="text-indigo-400 hover:text-indigo-600 text-sm">Change</button>
-          </div>
+      {student && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* ── LEFT PANEL (2/3) ── */}
+          <div className="lg:col-span-2 space-y-4">
 
-          {/* Tabs */}
-          <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1 w-fit">
-            {(['dues', 'history'] as const).map(t => (
-              <button key={t} onClick={() => setActiveTab(t)}
-                className={`px-4 py-2 text-sm rounded-lg transition font-medium capitalize ${activeTab === t ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>
-                {t === 'dues' ? 'Outstanding Dues' : 'Payment History'}
-              </button>
-            ))}
-          </div>
-
-          {loadingFees ? (
-            <div className="flex justify-center py-12"><Spinner /></div>
-          ) : activeTab === 'dues' ? (
-            /* ── DUES ── */
-            <div>
-              {pendingFees.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <div className="text-4xl mb-2">✅</div>
-                  <p className="font-medium">No outstanding dues</p>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm mb-5">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
-                        <tr>
-                          {canEdit && <th className="px-4 py-3 w-10"></th>}
-                          <th className="text-left px-4 py-3 text-gray-600 font-medium">Fee</th>
-                          <th className="text-left px-4 py-3 text-gray-600 font-medium">Bundle</th>
-                          <th className="text-left px-4 py-3 text-gray-600 font-medium">Due Date</th>
-                          <th className="text-right px-4 py-3 text-gray-600 font-medium">Amount</th>
-                          <th className="text-right px-4 py-3 text-gray-600 font-medium">Balance</th>
-                          <th className="text-center px-4 py-3 text-gray-600 font-medium">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {pendingFees.map(f => (
-                          <tr key={f._id} className={selectedFees.includes(f._id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}>
-                            {canEdit && (
-                              <td className="px-4 py-3">
-                                <input type="checkbox" checked={selectedFees.includes(f._id)} onChange={() => toggleFee(f._id)}
-                                  className="w-4 h-4 accent-indigo-600 cursor-pointer" />
-                              </td>
-                            )}
-                            <td className="px-4 py-3 font-medium text-gray-900">{f.title}</td>
-                            <td className="px-4 py-3 text-gray-500">{f.bundle?.name || '—'}</td>
-                            <td className="px-4 py-3 text-gray-500">{new Date(f.dueDate).toLocaleDateString('en-IN')}</td>
-                            <td className="px-4 py-3 text-right">₹{f.amount.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right font-medium text-red-600">₹{(f.amount - (f.amountPaid || 0)).toLocaleString()}</td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`text-xs px-2 py-0.5 rounded capitalize ${statusColor[f.status] || ''}`}>{f.status}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {/* Student Card */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xl flex-shrink-0">
+                    {student.user?.name?.charAt(0).toUpperCase()}
                   </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">{student.user?.name}</h3>
+                    <p className="text-sm text-gray-500">
+                      {student.class?.name && <span>{student.class.name}</span>}
+                      {student.campus?.name && <span> · {student.campus.name}</span>}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => { setStudent(null); setFees([]); setInvoices([]); }}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-50">
+                  Change Student
+                </button>
+              </div>
 
-                  {canEdit && selectedFees.length > 0 && (
-                    <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                      <h4 className="font-semibold text-gray-900 mb-4">Collect Payment</h4>
-                      <div className="grid sm:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
-                          <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
-                            {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Transaction ID / Reference</label>
-                          <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            value={transactionId} onChange={e => setTransactionId(e.target.value)} placeholder="Cheque no., UTR, etc." />
-                        </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-4">
+                <div>
+                  <p className="text-xs text-gray-400">Student ID</p>
+                  <p className="font-medium text-gray-700">{student.admissionNo || student.rollNumber}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Roll Number</p>
+                  <p className="font-medium text-gray-700">{student.rollNumber}</p>
+                </div>
+                {student.parents?.[0] && (
+                  <div>
+                    <p className="text-xs text-gray-400">Parent / Guardian</p>
+                    <p className="font-medium text-gray-700">{student.parents[0].name}</p>
+                  </div>
+                )}
+                {student.phone && (
+                  <div>
+                    <p className="text-xs text-gray-400">Phone</p>
+                    <p className="font-medium text-gray-700">{student.phone}</p>
+                  </div>
+                )}
+                {student.dateOfBirth && (
+                  <div>
+                    <p className="text-xs text-gray-400">Date of Birth</p>
+                    <p className="font-medium text-gray-700">{fmtDate(student.dateOfBirth)}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Financial summary */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 text-center">
+                  <p className="text-xs text-green-600 font-medium">Amount Paid</p>
+                  <p className="text-lg font-bold text-green-700">{fmtAmt(totalPaid)}</p>
+                </div>
+                <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-center">
+                  <p className="text-xs text-red-600 font-medium">Balance Due</p>
+                  <p className="text-lg font-bold text-red-700">{fmtAmt(totalBalance)}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-center">
+                  <p className="text-xs text-gray-500 font-medium">Unallocated</p>
+                  <p className="text-lg font-bold text-gray-600">₹0</p>
+                </div>
+              </div>
+            </div>
+
+            {loadingData ? (
+              <div className="flex justify-center py-12"><Spinner /></div>
+            ) : (
+              <>
+                {/* Tabs */}
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+                  {(['payment', 'history'] as const).map(t => (
+                    <button key={t} onClick={() => setActiveTab(t)}
+                      className={`px-5 py-2 text-sm rounded-lg font-medium transition ${activeTab === t ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {t === 'payment' ? 'New Payment' : 'History'}
+                    </button>
+                  ))}
+                </div>
+
+                {activeTab === 'payment' ? (
+                  /* ── NEW PAYMENT TAB ── */
+                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                    {pendingFees.length === 0 ? (
+                      <div className="text-center py-12 text-gray-400">
+                        <p className="text-4xl mb-2">✅</p>
+                        <p className="font-medium">All fees are cleared</p>
                       </div>
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional remarks" />
-                      </div>
-                      {isConcessionOnly && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 text-sm text-yellow-700 mb-4">
-                          Concession/Scholarship payments will not generate an invoice number.
+                    ) : (
+                      <>
+                        {/* Payment header controls */}
+                        {canCollect && (
+                          <div className="px-5 py-4 bg-gray-50 border-b border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">Enter Total Amount</label>
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm text-gray-400">₹</span>
+                                <input
+                                  type="number" min={0} placeholder="0"
+                                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  value={quickAmount}
+                                  onChange={e => { setQuickAmount(e.target.value); distributeAmount(e.target.value); }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">Payment Date</label>
+                              <input type="date"
+                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="text-xs text-gray-500 block mb-1">Reference / Cheque No / UTR</label>
+                              <input
+                                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                value={transactionRef} onChange={e => setTransactionRef(e.target.value)}
+                                placeholder="Optional" />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fee table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-100">
+                              <tr>
+                                <th className="text-left px-4 py-3 text-gray-500 font-medium">Due Date</th>
+                                <th className="text-left px-4 py-3 text-gray-500 font-medium">Fee</th>
+                                <th className="text-left px-4 py-3 text-gray-500 font-medium">Mode</th>
+                                <th className="text-right px-4 py-3 text-gray-500 font-medium">Balance</th>
+                                <th className="text-right px-4 py-3 text-gray-500 font-medium">Payment ₹</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                              {pendingFees.map(fee => {
+                                const balance = fee.amount - (fee.amountPaid || 0);
+                                const payAmt = payAmounts[fee._id] || '';
+                                const isOverpay = parseFloat(payAmt) > balance;
+                                return (
+                                  <tr key={fee._id} className={`hover:bg-gray-50 ${parseFloat(payAmt) > 0 ? 'bg-indigo-50/30' : ''}`}>
+                                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(fee.dueDate)}</td>
+                                    <td className="px-4 py-3">
+                                      <p className="font-medium text-gray-900">{fee.title}</p>
+                                      {fee.bundle && <p className="text-xs text-gray-400">{fee.bundle.name}</p>}
+                                      <span className={`inline-block text-xs px-1.5 py-0.5 rounded capitalize mt-0.5 ${statusColor[fee.status]}`}>{fee.status}</span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {canCollect ? (
+                                        <select
+                                          className="border border-gray-300 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                          value={payModes[fee._id] || 'cash'}
+                                          onChange={e => setPayModes(m => ({ ...m, [fee._id]: e.target.value }))}>
+                                          {MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                        </select>
+                                      ) : <span className="text-gray-400 text-xs">—</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-medium text-red-600 whitespace-nowrap">{fmtAmt(balance)}</td>
+                                    <td className="px-4 py-3 text-right">
+                                      {canCollect ? (
+                                        <div className={`flex items-center justify-end gap-1 ${isOverpay ? 'text-red-500' : ''}`}>
+                                          <span className="text-gray-400">₹</span>
+                                          <input
+                                            type="number" min={0} max={balance} step={1}
+                                            className={`w-28 border rounded-lg px-2 py-1 text-sm text-right focus:ring-2 focus:ring-indigo-500 focus:outline-none ${isOverpay ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
+                                            placeholder="0"
+                                            value={payAmt}
+                                            onChange={e => setPayAmounts(a => ({ ...a, [fee._id]: e.target.value }))}
+                                          />
+                                        </div>
+                                      ) : <span className="text-gray-400">—</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot>
+                              <tr className="border-t-2 border-gray-200 bg-gray-50">
+                                <td colSpan={3} className="px-4 py-3"></td>
+                                <td className="px-4 py-3 text-right text-sm text-gray-500 font-medium">Total</td>
+                                <td className="px-4 py-3 text-right font-bold text-indigo-600 text-base">{fmtAmt(payingTotal)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
                         </div>
-                      )}
-                      {collectionError && (
-                        <div className="bg-red-50 text-red-600 rounded-lg px-4 py-2 text-sm mb-4">{collectionError}</div>
-                      )}
-                      <div className="flex items-center justify-between">
+
+                        {canCollect && (
+                          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-4">
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">Notes</label>
+                              <input
+                                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none w-64"
+                                value={payNotes} onChange={e => setPayNotes(e.target.value)} placeholder="Optional remarks" />
+                            </div>
+                            <button
+                              onClick={() => setShowConfirm(true)}
+                              disabled={payingTotal === 0}
+                              className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed shadow transition">
+                              Confirm & Pay {payingTotal > 0 ? fmtAmt(payingTotal) : ''}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  /* ── HISTORY TAB ── */
+                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                    {invoices.length === 0 ? (
+                      <div className="text-center py-12 text-gray-400">
+                        <p className="text-4xl mb-2">📄</p>
+                        <p>No payment history yet</p>
+                      </div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b">
+                          <tr>
+                            <th className="text-left px-4 py-3 text-gray-500 font-medium">Date</th>
+                            <th className="text-left px-4 py-3 text-gray-500 font-medium">Receipt #</th>
+                            <th className="text-left px-4 py-3 text-gray-500 font-medium">Fees Covered</th>
+                            <th className="text-left px-4 py-3 text-gray-500 font-medium">Mode</th>
+                            <th className="text-right px-4 py-3 text-gray-500 font-medium">Amount</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {invoices.map(inv => (
+                            <tr key={inv._id} className={`hover:bg-gray-50 ${inv.isVoid ? 'opacity-50' : ''}`}>
+                              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(inv.paymentDate || inv.createdAt)}</td>
+                              <td className="px-4 py-3 font-mono text-indigo-600 text-xs">
+                                {inv.invoiceNumber || <span className="text-gray-400 italic">No #</span>}
+                                {inv.isVoid && <span className="ml-1 bg-red-100 text-red-600 text-xs px-1 rounded">VOID</span>}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 text-xs max-w-xs">
+                                {inv.lineItems?.map((li: any) => li.description).join(', ')}
+                              </td>
+                              <td className="px-4 py-3 text-gray-500 capitalize text-xs">{inv.paymentMode?.replace(/_/g, ' ')}</td>
+                              <td className="px-4 py-3 text-right font-bold">{fmtAmt(inv.total)}</td>
+                              <td className="px-4 py-3 text-right">
+                                <button onClick={() => setPrintInvoice(inv)}
+                                  className="text-xs text-indigo-600 hover:text-indigo-800">Print</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-gray-200 bg-gray-50">
+                            <td colSpan={4} className="px-4 py-3 text-sm font-medium text-gray-500">Total</td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900">
+                              {fmtAmt(invoices.filter(i => !i.isVoid).reduce((s, i) => s + i.total, 0))}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ── RIGHT PANEL (1/3) ── */}
+          <div className="space-y-4">
+            {/* Compact transaction history */}
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b bg-gray-50">
+                <p className="font-semibold text-gray-800">Transaction History</p>
+              </div>
+              {loadingData ? (
+                <div className="flex justify-center py-6"><Spinner /></div>
+              ) : invoices.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-6">No transactions</p>
+              ) : (
+                <div>
+                  <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+                    {invoices.filter(i => !i.isVoid).map(inv => (
+                      <div key={inv._id} className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50">
                         <div>
-                          <p className="text-sm text-gray-500">{selectedFees.length} fee(s) selected</p>
-                          <p className="text-xl font-bold text-indigo-600">₹{selectedTotal.toLocaleString()}</p>
+                          <p className="text-xs text-gray-500">{fmtDate(inv.paymentDate || inv.createdAt)}</p>
+                          <p className="text-xs text-gray-400 capitalize">{inv.paymentMode?.replace(/_/g, ' ')}</p>
                         </div>
-                        <button onClick={collect} disabled={collecting}
-                          className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
-                          {collecting && <Spinner />}
-                          Collect & Generate Receipt
-                        </button>
+                        <p className={`font-bold text-sm ${inv.isConcessionOnly ? 'text-orange-500' : 'text-gray-900'}`}>
+                          {inv.isConcessionOnly ? '−' : ''}{fmtAmt(inv.total)}
+                        </p>
                       </div>
-                    </div>
-                  )}
-                </>
+                    ))}
+                  </div>
+                  <div className="border-t px-4 py-3 flex justify-between">
+                    <span className="text-sm font-semibold text-gray-700">Total</span>
+                    <span className="text-sm font-bold text-gray-900">
+                      {fmtAmt(invoices.filter(i => !i.isVoid && !i.isConcessionOnly).reduce((s, i) => s + i.total, 0))}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
-          ) : (
-            /* ── HISTORY ── */
-            <div>
-              {invoices.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <div className="text-4xl mb-2">📄</div>
-                  <p className="font-medium">No payment history yet</p>
+
+            {/* Fee breakdown by status */}
+            {fees.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b bg-gray-50">
+                  <p className="font-semibold text-gray-800">Fee Breakdown</p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {invoices.map(inv => (
-                    <div key={inv._id} className={`bg-white border rounded-xl p-4 shadow-sm ${inv.isVoid ? 'opacity-60 border-red-200' : 'border-gray-200'}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            {inv.invoiceNumber ? (
-                              <span className="font-mono text-sm font-semibold text-indigo-700">{inv.invoiceNumber}</span>
-                            ) : (
-                              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">No Invoice #</span>
-                            )}
-                            {inv.isVoid && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">VOID</span>}
-                            {inv.isConcessionOnly && <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded">Concession</span>}
-                          </div>
-                          <p className="text-xs text-gray-400 mt-0.5">{new Date(inv.createdAt).toLocaleString('en-IN')}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-gray-900">₹{inv.amountPaid.toLocaleString()}</p>
-                          <p className="text-xs text-gray-500 capitalize">{inv.paymentMode?.replace(/_/g, ' ')}</p>
-                        </div>
-                        <button onClick={() => setPrintInvoice(inv)}
-                          className="ml-4 text-xs px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100">
-                          Print
-                        </button>
+                <div className="divide-y divide-gray-50">
+                  {fees.map(f => (
+                    <div key={f._id} className="px-4 py-2.5 flex items-center justify-between">
+                      <div className="min-w-0 flex-1 pr-2">
+                        <p className="text-sm font-medium text-gray-800 truncate">{f.title}</p>
+                        <p className="text-xs text-gray-400">{fmtDate(f.dueDate)}</p>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {inv.lineItems?.map((li, i) => (
-                          <span key={i} className="text-xs bg-gray-50 text-gray-600 px-2 py-0.5 rounded border border-gray-100">{li.name}: ₹{li.amount.toLocaleString()}</span>
-                        ))}
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-gray-900">{fmtAmt(f.amount)}</p>
+                        <span className={`text-xs px-1.5 py-0.5 rounded capitalize ${statusColor[f.status]}`}>{f.status}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
-        </>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
-      {/* Invoice Print Modal */}
-      {printInvoice && (
-        <InvoicePrintModal invoice={printInvoice} onClose={() => setPrintInvoice(null)} />
+      {/* ── Confirmation Modal ── */}
+      {showConfirm && student && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Payment</h3>
+              <button onClick={() => setShowConfirm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div className="p-6">
+              <div className="bg-indigo-50 rounded-xl p-4 mb-5">
+                <p className="font-semibold text-indigo-900">{student.user?.name}</p>
+                <p className="text-xs text-indigo-600">{student.class?.name} · {student.campus?.name || 'No campus'}</p>
+              </div>
+              <table className="w-full text-sm mb-4">
+                <thead>
+                  <tr className="border-b text-gray-500">
+                    <th className="text-left pb-2 font-medium">Fee</th>
+                    <th className="text-left pb-2 font-medium">Mode</th>
+                    <th className="text-right pb-2 font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {payingItems.map(x => (
+                    <tr key={x.fee._id}>
+                      <td className="py-2 text-gray-800">{x.fee.title}</td>
+                      <td className="py-2 text-gray-500 capitalize text-xs">{x.mode.replace(/_/g, ' ')}</td>
+                      <td className="py-2 text-right font-medium">{fmtAmt(x.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200 font-bold">
+                    <td colSpan={2} className="pt-3">Total</td>
+                    <td className="pt-3 text-right text-indigo-600 text-lg">{fmtAmt(payingTotal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div className="grid grid-cols-2 gap-3 text-xs text-gray-500 bg-gray-50 rounded-xl p-3 mb-4">
+                <div><span className="font-medium">Date:</span> {new Date(paymentDate).toLocaleDateString('en-IN')}</div>
+                {transactionRef && <div><span className="font-medium">Ref:</span> {transactionRef}</div>}
+                {payNotes && <div className="col-span-2"><span className="font-medium">Notes:</span> {payNotes}</div>}
+              </div>
+              {processError && <div className="bg-red-50 text-red-600 rounded-lg px-4 py-2 text-sm mb-4">{processError}</div>}
+            </div>
+            <div className="flex gap-3 px-6 py-4 border-t justify-end">
+              <button onClick={() => setShowConfirm(false)} disabled={processing}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                Go Back
+              </button>
+              <button onClick={confirmPay} disabled={processing}
+                className="px-6 py-2.5 text-sm bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 shadow">
+                {processing && <Spinner />}
+                {processing ? 'Processing...' : `Confirm Payment ${fmtAmt(payingTotal)}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* ── Print Modal ── */}
+      {printInvoice && <InvoicePrintModal invoice={printInvoice} onClose={() => setPrintInvoice(null)} />}
     </div>
   );
 };
 
-/* ────────────────────────────────────────────────────────── */
-/*  Invoice Print Modal                                       */
-/* ────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────── */
+/* Invoice Print Modal                             */
+/* ──────────────────────────────────────────────── */
 const InvoicePrintModal = ({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) => {
-  const printRef = useRef<HTMLDivElement>(null);
   const ss = invoice.schoolSnapshot || {} as any;
-  const settings = ss.invoiceSettings || {};
 
   const handlePrint = () => {
-    const content = printRef.current;
-    if (!content) return;
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`
-      <html><head><title>Invoice ${invoice.invoiceNumber || ''}</title>
+      <html><head><title>Receipt ${invoice.invoiceNumber || ''}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #1f2937; }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-        .logo { max-height: 80px; max-width: 160px; object-fit: contain; }
-        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-45deg); font-size: 80px; font-weight: 900; color: rgba(0,0,0,${settings.watermarkOpacity ?? 0.08}); pointer-events: none; z-index: 0; white-space: nowrap; }
-        .content { position: relative; z-index: 1; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; padding: 32px; color: #1f2937; font-size: 13px; }
+        .flex { display: flex; justify-content: space-between; align-items: flex-start; }
+        .logo { max-height: 70px; max-width: 150px; object-fit: contain; }
+        .school { font-size: 18px; font-weight: 700; }
+        .meta { color: #6b7280; font-size: 11px; margin-top: 2px; }
+        hr { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
         table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-        th { background: #f3f4f6; text-align: left; padding: 8px 12px; font-size: 12px; }
-        td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f3f4f6; }
-        .total-row { font-weight: bold; background: #f9fafb; }
-        .inv-num { font-size: 18px; font-weight: bold; color: #4f46e5; }
-        .school-name { font-size: 20px; font-weight: bold; }
-        .meta { font-size: 12px; color: #6b7280; }
-        .divider { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
+        th { background: #f9fafb; text-align: left; padding: 8px 10px; font-size: 11px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+        td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
+        .total td { font-weight: 700; background: #f9fafb; border-top: 2px solid #e5e7eb; border-bottom: none; font-size: 14px; }
+        .inv-num { font-size: 20px; font-weight: 700; color: #4f46e5; }
         @media print { body { padding: 0; } }
       </style></head><body>
-      ${settings.showWatermark && ss.logo ? `<div class="watermark"><img src="${ss.logo}" style="max-height:200px;opacity:${settings.watermarkOpacity ?? 0.08}"></div>` : ''}
-      <div class="content">
-        ${settings.headerText ? `<div style="text-align:center;margin-bottom:8px;font-size:13px;color:#6b7280">${settings.headerText}</div>` : ''}
-        <div class="header">
-          ${settings.logoPosition !== 'right' && ss.logo ? `<img src="${ss.logo}" class="logo">` : '<div></div>'}
-          <div style="text-align:${settings.logoPosition === 'center' ? 'center' : 'right'}">
-            <div class="school-name">${ss.name || ''}</div>
-            ${settings.showAddress && ss.address ? `<div class="meta">${ss.address}</div>` : ''}
-            ${settings.showPhone && ss.phone ? `<div class="meta">Ph: ${ss.phone}</div>` : ''}
-            ${settings.showGST && ss.gstn ? `<div class="meta">GSTIN: ${ss.gstn}</div>` : ''}
-          </div>
-          ${settings.logoPosition === 'right' && ss.logo ? `<img src="${ss.logo}" class="logo">` : ''}
+      <div class="flex">
+        ${ss.logo ? `<img src="${ss.logo}" class="logo">` : '<div></div>'}
+        <div style="text-align:right">
+          <div class="school">${ss.name || ''}</div>
+          ${ss.address ? `<div class="meta">${ss.address}</div>` : ''}
+          ${ss.phone ? `<div class="meta">Ph: ${ss.phone}</div>` : ''}
+          ${ss.gstn ? `<div class="meta">GSTIN: ${ss.gstn}</div>` : ''}
         </div>
-        <hr class="divider">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <div>
-            <div>${invoice.invoiceNumber ? `<span class="inv-num">${invoice.invoiceNumber}</span>` : '<span style="color:#6b7280;font-style:italic">No Invoice Number (Concession)</span>'}</div>
-            <div class="meta">Date: ${new Date(invoice.createdAt).toLocaleString('en-IN')}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-weight:600">${invoice.student?.name || ''}</div>
-            <div class="meta">Roll: ${invoice.student?.rollNumber || ''}</div>
-            ${invoice.student?.admissionNo ? `<div class="meta">Adm: ${invoice.student.admissionNo}</div>` : ''}
-            ${invoice.student?.class ? `<div class="meta">Class: ${invoice.student.class}</div>` : ''}
-            ${invoice.student?.campus ? `<div class="meta">Campus: ${invoice.student.campus}</div>` : ''}
-          </div>
-        </div>
-        <table>
-          <thead><tr><th>Description</th><th style="text-align:right">Amount</th>${settings.showGST ? '<th style="text-align:right">Tax</th>' : ''}<th style="text-align:right">Total</th></tr></thead>
-          <tbody>
-            ${(invoice.lineItems || []).map(li => `<tr><td>${li.name}</td><td style="text-align:right">₹${li.amount.toLocaleString()}</td>${settings.showGST ? `<td style="text-align:right">₹${(li.taxAmount || 0).toLocaleString()}</td>` : ''}<td style="text-align:right">₹${(li.amount + (li.taxAmount || 0)).toLocaleString()}</td></tr>`).join('')}
-            ${(invoice.discounts || []).map(d => `<tr><td style="color:#16a34a">${d.type.replace(/_/g, ' ')}${d.label ? ' — ' + d.label : ''}</td><td></td>${settings.showGST ? '<td></td>' : ''}<td style="text-align:right;color:#16a34a">- ₹${d.amount.toLocaleString()}</td></tr>`).join('')}
-          </tbody>
-          <tfoot><tr class="total-row"><td colspan="${settings.showGST ? '3' : '2'}">Total Paid</td><td style="text-align:right">₹${invoice.amountPaid.toLocaleString()}</td></tr></tfoot>
-        </table>
-        <div class="meta">Payment Mode: ${(invoice.paymentMode || '').replace(/_/g, ' ')}</div>
-        ${settings.showBankDetails && ss.bankDetails ? `<div class="meta" style="margin-top:8px">Bank: ${ss.bankDetails}</div>` : ''}
-        ${settings.footerText ? `<div style="margin-top:16px;font-size:12px;color:#6b7280;text-align:center">${settings.footerText}</div>` : ''}
-        ${settings.terms ? `<div style="margin-top:8px;font-size:11px;color:#9ca3af">${settings.terms}</div>` : ''}
       </div>
-      <script>window.onload=()=>{ window.print(); window.close(); }</script>
+      <hr>
+      <div class="flex" style="margin-bottom:16px">
+        <div>
+          ${invoice.invoiceNumber ? `<div class="inv-num">${invoice.invoiceNumber}</div>` : '<div style="color:#9ca3af;font-style:italic">Concession — No Invoice #</div>'}
+          <div class="meta">Date: ${new Date(invoice.paymentDate || invoice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:600">${invoice.student?.user?.name || invoice.student?.name || ''}</div>
+          <div class="meta">Roll: ${invoice.student?.rollNumber || ''}</div>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>
+          ${(invoice.lineItems || []).map((li: any) => `<tr><td>${li.description || li.name || ''}</td><td style="text-align:right">₹${(li.amount || 0).toLocaleString('en-IN')}</td></tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="total"><td>Total Paid · <span style="color:#6b7280;font-weight:400;font-size:11px">${(invoice.paymentMode || '').replace(/_/g, ' ')}</span></td><td style="text-align:right">₹${(invoice.total || 0).toLocaleString('en-IN')}</td></tr>
+        </tfoot>
+      </table>
+      ${ss.footerText ? `<p style="text-align:center;color:#9ca3af;font-size:11px;margin-top:24px">${ss.footerText}</p>` : ''}
+      <script>window.onload = function() { window.print(); window.close(); }</script>
       </body></html>
     `);
     w.document.close();
@@ -435,94 +700,53 @@ const InvoicePrintModal = ({ invoice, onClose }: { invoice: Invoice; onClose: ()
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h3 className="text-lg font-semibold">
-            {invoice.invoiceNumber ? `Receipt: ${invoice.invoiceNumber}` : 'Receipt (No Invoice Number)'}
+            {invoice.invoiceNumber ? `Receipt: ${invoice.invoiceNumber}` : 'Receipt (Concession)'}
           </h3>
           <div className="flex gap-3">
             <button onClick={handlePrint} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-              Print / Download
+              Print / Save PDF
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
           </div>
         </div>
-
-        {/* Preview */}
-        <div className="overflow-y-auto flex-1 p-6" ref={printRef}>
-          {/* School header */}
-          <div className="flex justify-between items-start mb-4">
-            {ss.logo && settings.logoPosition !== 'right' && (
-              <img src={ss.logo} alt="logo" className="max-h-16 max-w-32 object-contain" />
-            )}
-            <div className={`${settings.logoPosition === 'center' ? 'text-center mx-auto' : 'text-right'}`}>
-              <p className="text-lg font-bold">{ss.name}</p>
-              {settings.showAddress && ss.address && <p className="text-xs text-gray-500">{ss.address}</p>}
-              {settings.showPhone && ss.phone && <p className="text-xs text-gray-500">Ph: {ss.phone}</p>}
-              {settings.showGST && ss.gstn && <p className="text-xs text-gray-500">GSTIN: {ss.gstn}</p>}
+        <div className="p-6">
+          {/* Preview */}
+          <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
+            <div className="flex justify-between items-start mb-3">
+              {ss.logo && <img src={ss.logo} alt="logo" className="max-h-12 object-contain" />}
+              <div className="text-right">
+                <p className="font-bold text-gray-900">{ss.name}</p>
+                {ss.address && <p className="text-xs text-gray-500">{ss.address}</p>}
+                {ss.phone && <p className="text-xs text-gray-500">Ph: {ss.phone}</p>}
+              </div>
             </div>
-            {ss.logo && settings.logoPosition === 'right' && (
-              <img src={ss.logo} alt="logo" className="max-h-16 max-w-32 object-contain" />
-            )}
+            <hr className="my-3" />
+            <div className="flex justify-between mb-4">
+              <div>
+                {invoice.invoiceNumber
+                  ? <p className="text-xl font-bold text-indigo-700">{invoice.invoiceNumber}</p>
+                  : <p className="text-sm text-gray-400 italic">No Invoice Number</p>}
+                <p className="text-xs text-gray-400">{fmtDate(invoice.paymentDate || invoice.createdAt)}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-semibold text-sm">{invoice.student?.user?.name || invoice.student?.name || ''}</p>
+              </div>
+            </div>
+            {invoice.lineItems?.map((li: any, i: number) => (
+              <div key={i} className="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
+                <span className="text-gray-700">{li.description || li.name}</span>
+                <span className="font-medium">₹{(li.amount || 0).toLocaleString('en-IN')}</span>
+              </div>
+            ))}
+            <div className="flex justify-between font-bold text-base pt-3 mt-1 border-t-2 border-gray-200">
+              <span>Total</span>
+              <span className="text-indigo-700">₹{(invoice.total || 0).toLocaleString('en-IN')}</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-2 capitalize">{invoice.paymentMode?.replace(/_/g, ' ')}</p>
           </div>
-
-          <hr className="my-3" />
-
-          <div className="flex justify-between mb-4">
-            <div>
-              {invoice.invoiceNumber ? (
-                <p className="text-xl font-bold text-indigo-700">{invoice.invoiceNumber}</p>
-              ) : (
-                <p className="text-sm italic text-gray-400">No Invoice Number</p>
-              )}
-              <p className="text-xs text-gray-400">{new Date(invoice.createdAt).toLocaleString('en-IN')}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-semibold">{invoice.student?.name}</p>
-              <p className="text-xs text-gray-500">Roll: {invoice.student?.rollNumber}</p>
-              {invoice.student?.class && <p className="text-xs text-gray-500">{invoice.student.class}</p>}
-            </div>
-          </div>
-
-          <table className="w-full text-sm mb-4">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left px-3 py-2 text-gray-600">Description</th>
-                <th className="text-right px-3 py-2 text-gray-600">Amount</th>
-                {settings.showGST && <th className="text-right px-3 py-2 text-gray-600">Tax</th>}
-                <th className="text-right px-3 py-2 text-gray-600">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {invoice.lineItems?.map((li, i) => (
-                <tr key={i}>
-                  <td className="px-3 py-2">{li.name}</td>
-                  <td className="px-3 py-2 text-right">₹{li.amount.toLocaleString()}</td>
-                  {settings.showGST && <td className="px-3 py-2 text-right">₹{(li.taxAmount || 0).toLocaleString()}</td>}
-                  <td className="px-3 py-2 text-right">₹{(li.amount + (li.taxAmount || 0)).toLocaleString()}</td>
-                </tr>
-              ))}
-              {invoice.discounts?.map((d, i) => (
-                <tr key={`d-${i}`} className="text-green-600">
-                  <td className="px-3 py-2 capitalize">{d.type.replace(/_/g, ' ')}{d.label ? ` — ${d.label}` : ''}</td>
-                  <td></td>
-                  {settings.showGST && <td></td>}
-                  <td className="px-3 py-2 text-right">- ₹{d.amount.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-gray-50 font-bold">
-                <td className="px-3 py-2" colSpan={settings.showGST ? 3 : 2}>Total Paid</td>
-                <td className="px-3 py-2 text-right">₹{invoice.amountPaid.toLocaleString()}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          <p className="text-xs text-gray-500 capitalize">Payment Mode: {invoice.paymentMode?.replace(/_/g, ' ')}</p>
-          {settings.showBankDetails && ss.bankDetails && <p className="text-xs text-gray-500 mt-1">{ss.bankDetails}</p>}
-          {settings.footerText && <p className="text-xs text-gray-400 mt-3 text-center">{settings.footerText}</p>}
-          {settings.terms && <p className="text-xs text-gray-300 mt-1">{settings.terms}</p>}
         </div>
       </div>
     </div>

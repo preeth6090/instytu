@@ -19,7 +19,11 @@ router.get('/', authenticate, async (req: any, res) => {
 // POST /api/users — create new user (any role) for institution
 router.post('/', authenticate, async (req: any, res) => {
   try {
-    const { name, email, password, role, customRoleId, campusId } = req.body;
+    const { name, email, password, role } = req.body;
+    // Accept both customRole/campus (frontend) and customRoleId/campusId (legacy)
+    const customRole = req.body.customRole || req.body.customRoleId || undefined;
+    const campus = req.body.campus || req.body.campusId || undefined;
+
     if (!name || !email || !password) return res.status(400).json({ message: 'Name, email and password required' });
 
     const existing = await User.findOne({ email });
@@ -29,8 +33,8 @@ router.post('/', authenticate, async (req: any, res) => {
     const user = await User.create({
       name, email, password: hashed,
       role: role || 'staff',
-      customRole: customRoleId || undefined,
-      campus: campusId || undefined,
+      customRole: customRole || undefined,
+      campus: campus || undefined,
       institution: req.user.institution,
     });
 

@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/', authorize('admin', 'superadmin', 'teacher'), getStudents);
+router.get('/', authorize('admin', 'superadmin', 'teacher', 'staff'), getStudents);
 router.get('/me', authorize('student'), getMyStudentProfile);
 router.get('/by-parent', authorize('parent'), getChildrenByParent);
 router.get('/:id', authorize('admin', 'superadmin', 'teacher', 'parent'), getStudent);
